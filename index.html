@@ -5293,29 +5293,88 @@ function cdExportLatestCSV() {
 function cdExportExternalAIPrompt() {
   const prompt = `ULOGA: Ti si makro i tržišni analitičar specijaliziran za Stovall sector-rotation pristup.
 
-ZADATAK:
-1) Koristi ISKLJUČIVO priložene objektivne podatke iz exporta aplikacije (FRED serije + sektori + industrije).
-2) Nadopuni analizu vlastitom bazom znanja i aktualnom web pretragom (monetarna politika, inflacija, tržišni režim, earnings/breadth).
-3) Procijeni ODVOJENO:
-   - Economic Cycle fazu: Full Recession | Early Recovery | Full Recovery | Early Recession
-   - Market Cycle fazu: Market Bottom | Bull Market | Market Top | Bear Market
-4) Usporedi 4 FRED indikatora (UMCSENT, INDPRO, T10Y2Y, DGS5) sa Stovall leading/lagging sektorima.
-5) Obavezno navedi razinu pouzdanosti (0-100) i je li faza entering/mid/exiting.
-6) Daj preporuku akcije sukladno cilju korisnika (kapitalni rast, očuvanje kapitala, balans), uz jasno istaknute rizike.
+PRAVILA RADA:
+- Koristi ISKLJUČIVO objektivne podatke iz exporta aplikacije kao primarni input.
+- Obavezno dopuni procjenu aktualnom web pretragom (makro objave, centralna banka, tržišni režim) i vlastitom bazom znanja.
+- Ne miješaj nazive faza:
+  - Economic Cycle: Full Recession | Early Recovery | Full Recovery | Early Recession
+  - Market Cycle: Market Bottom | Bull Market | Market Top | Bear Market
+
+OBAVEZNA PROVJERA INDIKATORA (sva 4 FRED):
+1) UMCSENT (Consumer Expectations)
+2) INDPRO (Industrial Production)
+3) DGS5 (Interest Rates – 5Y Treasury)
+4) T10Y2Y (Yield Curve – 10Y-2Y)
+
+STOVALL REFERENCA — ŠTO SE OČEKUJE PO FAZI:
+A) Full Recession / Market Bottom
+   - Consumer Expectations: Reviving
+   - Industrial Production: Bottoming Out
+   - Interest Rates: Falling
+   - Yield Curve: Normal
+   - Sektori lideri: XLK, XLY
+
+B) Early Recovery / Bull Market
+   - Consumer Expectations: Rising
+   - Industrial Production: Rising
+   - Interest Rates: Bottoming Out
+   - Yield Curve: Normal (Steep)
+   - Sektori lideri: XLC, XLI, XLB
+
+C) Full Recovery / Market Top
+   - Consumer Expectations: Declining
+   - Industrial Production: Flat
+   - Interest Rates: Rising Rapidly
+   - Yield Curve: Flattening Out
+   - Sektori lideri: XLE, XLV
+
+D) Early Recession / Bear Market
+   - Consumer Expectations: Falling Sharply
+   - Industrial Production: Falling
+   - Interest Rates: Peaking
+   - Yield Curve: Flat/Inverted
+   - Sektori lideri: XLF, XLP, XLU, XLRE
+
+METODOLOGIJA (OBAVEZNO):
+1) Za svaki indikator odredi koji Stovall opis najbolje odgovara TRENUTNOM stanju.
+2) Napravi score po fazama (0-4) na temelju podudarnosti indikatora.
+3) Usporedi taj score sa sektorskom rotacijom (leading/lagging sektori i industrije).
+4) Uključi potvrdu/kontradikciju iz web izvora i baze znanja.
+5) Tek tada donesi konačnu ocjenu za economicCycle i marketCycle.
+
+KONTEKST CILJA KORISNIKA:
+- Korisnik želi prepoznati gdje se tržište i ekonomija nalaze u ciklusu radi boljeg tajminga i alokacije rizika.
+- Prilagodi zaključak cilju: growth | capital-preservation | balanced.
 
 FORMAT ODGOVORA (JSON):
 {
-  "economicCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
-  "marketCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
-  "evidence": {
-    "fred": ["..."],
-    "sectorRotation": ["..."],
+  "economicCycle": {"phase":"Full Recession|Early Recovery|Full Recovery|Early Recession","confidence":0,"direction":"entering|mid|exiting"},
+  "marketCycle": {"phase":"Market Bottom|Bull Market|Market Top|Bear Market","confidence":0,"direction":"entering|mid|exiting"},
+  "indicatorCheck": {
+    "UMCSENT": {"observed":"...","stovallMatch":"Reviving|Rising|Declining|Falling Sharply","phaseImplication":"..."},
+    "INDPRO": {"observed":"...","stovallMatch":"Bottoming Out|Rising|Flat|Falling","phaseImplication":"..."},
+    "DGS5": {"observed":"...","stovallMatch":"Falling|Bottoming Out|Rising Rapidly|Peaking","phaseImplication":"..."},
+    "T10Y2Y": {"observed":"...","stovallMatch":"Normal|Normal (Steep)|Flattening Out|Flat/Inverted","phaseImplication":"..."}
+  },
+  "phaseScore": {
+    "Full Recession": 0,
+    "Early Recovery": 0,
+    "Full Recovery": 0,
+    "Early Recession": 0
+  },
+  "sectorRotationEvidence": {
+    "leadingSectors": ["..."],
+    "laggingSectors": ["..."],
+    "consistencyWithStovall": "high|medium|low"
+  },
+  "externalValidation": {
     "macroWebFindings": ["..."]
   },
   "portfolioImplication": {
     "userGoal": "growth|capital-preservation|balanced",
     "stance": "risk-on|neutral|risk-off",
-    "actions": ["..."]
+    "actions": ["..."],
+    "keyRisks": ["..."]
   }
 }`;
 
