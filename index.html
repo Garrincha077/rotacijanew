@@ -4377,6 +4377,14 @@ function cdMacroStovallSignalMap() {
   const yc3 = cdMacroPctChange(yc, 3);
   const ycNow = yc.length ? yc[yc.length - 1].value : 0;
 
+  const rateNow = rates.length ? rates[rates.length - 1].value : 0;
+  const rate1mAgo = rates.length > 1 ? rates[rates.length - 2].value : rateNow;
+  const rate3mAgo = rates.length > 3 ? rates[rates.length - 4].value : rateNow;
+  const rate12mAgo = rates.length > 12 ? rates[rates.length - 13].value : rateNow;
+  const d1m = rateNow - rate1mAgo;
+  const d3m = rateNow - rate3mAgo;
+  const d12m = rateNow - rate12mAgo;
+
   let consumer = 'Rising';
   if (sent3 <= -3 && sent12 <= -3) consumer = 'Falling Sharply';
   else if (sent3 < -0.5) consumer = 'Declining';
@@ -4387,10 +4395,17 @@ function cdMacroStovallSignalMap() {
   else if (Math.abs(ind3) <= 0.5) industrial = 'Flat';
   else if (ind3 > 0.5 && ind12 < 0) industrial = 'Bottoming Out';
 
+  // Prioritet: prvo prepoznaj pad stopa, pa tek onda rast/vrh
   let interest = 'Bottoming Out';
-  if (r3 < -1) interest = 'Falling';
-  else if (Math.abs(r3) <= 0.5 && r12 > 2) interest = 'Peaking';
-  else if (r3 > 0.5) interest = 'Rising Rapidly';
+  if (d3m <= -0.12 || (r3 <= -1 && d1m <= 0)) {
+    interest = 'Falling';
+  } else if (d3m >= 0.12 && r3 >= 1 && d1m >= 0) {
+    interest = 'Rising Rapidly';
+  } else if (Math.abs(d3m) < 0.10 && d12m > 0.25 && d1m <= 0.03) {
+    interest = 'Peaking';
+  } else if (d12m < -0.15 || (Math.abs(d3m) < 0.12 && r12 < 0)) {
+    interest = 'Bottoming Out';
+  }
 
   let curve = 'Normal';
   if (ycNow <= 0) curve = 'Flat/Inverted';
