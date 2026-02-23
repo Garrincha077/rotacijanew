@@ -1663,6 +1663,10 @@
         <div class="card-title">📝 Sažetak analize</div>
         <div id="cdSummary" style="font-size:14px;line-height:1.7;color:var(--text)">—</div>
         <div id="cdTimestamp" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:12px">—</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestJSON()">Izvoz analize JSON</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestCSV()">Izvoz analize CSV</button>
+        </div>
       </div>
     </div>
   </div>
@@ -4026,6 +4030,47 @@ async function callGemini(apiKey, model, messages) {
   return data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || 'Prazan odgovor';
 }
 
+function cdNormalizePhaseLabel(phase, type = 'economic') {
+  if (!phase) return phase;
+  const p = String(phase).toLowerCase();
+  if (type === 'market') {
+    if (p.includes('bottom')) return 'Market Bottom';
+    if (p.includes('bull')) return 'Bull Market';
+    if (p.includes('top')) return 'Market Top';
+    if (p.includes('bear')) return 'Bear Market';
+    if (p.includes('full') && p.includes('reces')) return 'Market Bottom';
+    if (p.includes('early') && p.includes('recov')) return 'Bull Market';
+    if (p.includes('full') && p.includes('recov')) return 'Market Top';
+    if (p.includes('early') && p.includes('reces')) return 'Bear Market';
+    return phase;
+  }
+  if (p.includes('full') && p.includes('reces')) return 'Full Recession';
+  if (p.includes('early') && p.includes('recov')) return 'Early Recovery';
+  if (p.includes('full') && p.includes('recov')) return 'Full Recovery';
+  if (p.includes('early') && p.includes('reces')) return 'Early Recession';
+  return phase;
+}
+
+function cdSafeParseJsonResponse(response) {
+  if (!response) throw new Error('Prazan odgovor modela');
+  const direct = response.match(/\{[\s\S]*\}/);
+  const candidate = (direct ? direct[0] : response)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+  try {
+    return JSON.parse(candidate);
+  } catch (e) {
+    const cleaned = candidate
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/\u0000/g, '')
+      .trim();
+    return JSON.parse(cleaned);
+  }
+}
+
 // ═══════════════════════════════════════════════════════
 // CYCLE DETECTOR MODULE
 // ═══════════════════════════════════════════════════════
@@ -4499,12 +4544,20 @@ function cdRenderCycleSVG() {
     { l:'Bear Market',     c:'#c4b5fd', bg:'rgba(167,139,250,0.22)' }
   ];
   const rH = 26, eY = phaseY, mY = phaseY + rH + 3;
+  const phaseW = (W - 2 * PAD) / 4;
   for (let i = 0; i < 4; i++) {
-    const bx = PAD + i*(W-2*PAD)/4, bw = (W-2*PAD)/4;
-    html += `<rect x="${bx}" y="${eY}" width="${bw}" height="${rH}" rx="2" fill="${econPh[i].bg}"/>`;
-    html += `<text x="${bx+bw/2}" y="${eY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${econPh[i].c}" font-weight="700">${econPh[i].l}</text>`;
-    html += `<rect x="${bx}" y="${mY}" width="${bw}" height="${rH}" rx="2" fill="${mktPh[i].bg}"/>`;
-    html += `<text x="${bx+bw/2}" y="${mY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${mktPh[i].c}" font-weight="700">${mktPh[i].l}</text>`;
+    const bx = PAD + i * phaseW;
+    html += `<rect x="${bx}" y="${eY}" width="${phaseW}" height="${rH}" rx="2" fill="${econPh[i].bg}"/>`;
+    html += `<text x="${bx+phaseW/2}" y="${eY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${econPh[i].c}" font-weight="700">${econPh[i].l}</text>`;
+  }
+
+  // Market faze su pomaknute unaprijed za pola faze (Stovall lead)
+  const marketCenters = [0.0, 0.25, 0.5, 0.75];
+  for (let i = 0; i < 4; i++) {
+    const centerX = PAD + marketCenters[i] * (W - 2 * PAD);
+    const bx = Math.max(PAD, Math.min(centerX - phaseW / 2, W - PAD - phaseW));
+    html += `<rect x="${bx}" y="${mY}" width="${phaseW}" height="${rH}" rx="2" fill="${mktPh[i].bg}"/>`;
+    html += `<text x="${bx+phaseW/2}" y="${mY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${mktPh[i].c}" font-weight="700">${mktPh[i].l}</text>`;
   }
   // Row labels
   html += `<text x="${PAD-4}" y="${eY+rH/2+1}" text-anchor="end" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="var(--text-dim)">ECON</text>`;
@@ -4518,19 +4571,20 @@ function cdRenderCycleSVG() {
 
   // ═══ AI MARKERS (pulsing dots on the curves) ═══
   if (cdLastAnalysis) {
-    const ph2f = { 'Full Recession':0.125, 'Early Recovery':0.375, 'Full Recovery':0.625, 'Early Recession':0.875 };
+    const econPh2f = { 'Full Recession':0.125, 'Early Recovery':0.375, 'Full Recovery':0.625, 'Early Recession':0.875 };
+    const marketPh2f = { 'Market Bottom':0.125, 'Bull Market':0.375, 'Market Top':0.5, 'Bear Market':0.875 };
     const dn = { 'entering':-0.06, 'mid':0, 'exiting':0.06 };
-    function dot(cyc, amp, off, col, lbl, flip) {
+    function dot(cyc, amp, off, col, lbl, flip, phaseMap) {
       if (!cyc?.phase) return;
-      const f = (ph2f[cyc.phase]||0.5) + (dn[cyc.direction]||0);
+      const f = (phaseMap[cyc.phase]||0.5) + (dn[cyc.direction]||0);
       const x = PAD + f*(W-2*PAD);
       const y = curveMid - amp * Math.sin(f*2*Math.PI + off);
       html += `<circle cx="${x}" cy="${y}" r="10" fill="${col}" opacity="0.2"><animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite"/></circle>`;
       html += `<circle cx="${x}" cy="${y}" r="6" fill="${col}" stroke="#0a0e1a" stroke-width="2"/>`;
       html += `<text x="${x}" y="${flip?y+22:y-16}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${col}" font-weight="700">${lbl} ${cyc.confidence}%</text>`;
     }
-    dot(cdLastAnalysis.marketCycle, mktAmp, mktOff, '#f59e0b', 'MKT', false);
-    dot(cdLastAnalysis.economicCycle, ecoAmp, ecoOff, '#38bdf8', 'ECON', true);
+    dot(cdLastAnalysis.marketCycle, mktAmp, mktOff, '#f59e0b', 'MKT', false, marketPh2f);
+    dot(cdLastAnalysis.economicCycle, ecoAmp, ecoOff, '#38bdf8', 'ECON', true, econPh2f);
   }
 
   svg.innerHTML = html;
@@ -4748,30 +4802,35 @@ async function cdRunAnalysis() {
 
 TEORIJA MODELA:
 Tržišni ciklus predvodi ekonomski ciklus za 6-12 mjeseci.
+Koristi točno 4 FRED indikatora (UMCSENT, INDPRO, T10Y2Y, DGS5) i Stovall leading/lagging sektore.
+NE MIJEŠAJ nazive ekonomskih faza i market faza.
+Ekonomske faze: Full Recession, Early Recovery, Full Recovery, Early Recession.
+Market faze: Market Bottom, Bull Market, Market Top, Bear Market.
+
 Postoje 4 faze s karakterističnim sektorskim liderima:
 
-FULL RECESSION / MARKET BOTTOM:
+FULL RECESSION (econ) / MARKET BOTTOM (market):
 - Vodeći sektori: Technology (XLK), Consumer Discretionary/Cyclical (XLY)
 - Consumer Expectations: Reviving (počinje rasti s dna)
 - Industrial Production: Bottoming Out
 - Interest Rates: Falling
 - Yield Curve: Normal (strmija)
 
-EARLY RECOVERY / BULL MARKET:
+EARLY RECOVERY (econ) / BULL MARKET (market):
 - Vodeći sektori: Comm. Services (XLC), Industrials (XLI), Materials (XLB)
 - Consumer Expectations: Rising
 - Industrial Production: Rising
 - Interest Rates: Bottoming Out
 - Yield Curve: Normal to Steep
 
-FULL RECOVERY / MARKET TOP:
+FULL RECOVERY (econ) / MARKET TOP (market):
 - Vodeći sektori: Energy (XLE), Health Care (XLV)
 - Consumer Expectations: Declining
 - Industrial Production: Flat/Slowing
 - Interest Rates: Rising Rapidly (Fed hiking)
 - Yield Curve: Flattening
 
-EARLY RECESSION / BEAR MARKET:
+EARLY RECESSION (econ) / BEAR MARKET (market):
 - Vodeći sektori: Financials (XLF), Consumer Staples/Defensive (XLP), Utilities (XLU), Real Estate (XLRE)
 - Consumer Expectations: Falling Sharply
 - Industrial Production: Falling
@@ -4779,11 +4838,11 @@ EARLY RECESSION / BEAR MARKET:
 - Yield Curve: Flat or Inverted
 
 METODOLOGIJA ANALIZE (Julius de Kempenaer pristup):
-1. Ocijeni svaki makro indikator i pridjeli mu fazu
-2. Ocijeni sektorsku relativnu snagu — koristi SVE periode (tjedno, mjesečno, 3M, 6M, godišnje, YTD) za cjelovitu sliku
+1. Ocijeni sva 4 FRED indikatora i pridjeli im ekonomsku fazu
+2. Ocijeni Stovall leading i lagging sektore — koristi SVE periode (tjedno, mjesečno, 3M, 6M, godišnje, YTD) za cjelovitu sliku
 3. Kratkoročni lideri (tjedno) signaliziraju PROMJENU faze, dugoročni lideri (godišnje, YTD) signaliziraju TRENUTNU fazu
 4. Ako su industrije dostupne, koristi ih za potvrdu sektorskih signala
-5. Kombiniraj makro + sektore + industrije u finalni zaključak
+5. Kombiniraj 4 FRED + leading/lagging sektore + industrije u finalni zaključak
 6. Market Cycle i Economic Cycle su ODVOJENE procjene
 
 VAŽNO: Model je grubi vodič, ne precizni sat. Faze se preklapaju i tranzicije traju.
@@ -4804,7 +4863,7 @@ Današnji datum: ${today}
 Odgovori ISKLJUČIVO u JSON formatu, bez ikakvog teksta izvan JSON-a:
 {
   "marketCycle": {
-    "phase": "Full Recession | Early Recovery | Full Recovery | Early Recession",
+    "phase": "Market Bottom | Bull Market | Market Top | Bear Market",
     "confidence": 0-100,
     "direction": "entering | mid | exiting"
   },
@@ -4836,11 +4895,9 @@ Odgovori ISKLJUČIVO u JSON formatu, bez ikakvog teksta izvan JSON-a:
     ];
     const response = await callAiApi(provKey, apiKey, model, messages);
 
-    let jsonStr = response;
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonStr = jsonMatch[0];
-
-    const result = JSON.parse(jsonStr);
+    const result = cdSafeParseJsonResponse(response);
+    if (result.marketCycle?.phase) result.marketCycle.phase = cdNormalizePhaseLabel(result.marketCycle.phase, 'market');
+    if (result.economicCycle?.phase) result.economicCycle.phase = cdNormalizePhaseLabel(result.economicCycle.phase, 'economic');
     cdLastAnalysis = result;
     cdDisplayResults(result);
     cdRenderCycleSVG();
@@ -4956,6 +5013,10 @@ function cdPhaseColor(phase) {
   if (p.includes('early') && p.includes('recov')) return 'var(--green)';
   if (p.includes('full') && p.includes('recov')) return 'var(--amber)';
   if (p.includes('early') && p.includes('reces')) return 'var(--purple)';
+  if (p.includes('bottom')) return 'var(--red)';
+  if (p.includes('bull')) return 'var(--green)';
+  if (p.includes('top')) return 'var(--amber)';
+  if (p.includes('bear')) return 'var(--purple)';
   return 'var(--text-dim)';
 }
 
@@ -4981,8 +5042,57 @@ function cdPhaseCardClass(phase) {
   return '';
 }
 
+function cdExportLatestJSON() {
+  if (!cdLastAnalysis) { showToast('Nema analize za izvoz', true); return; }
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    fredSeries: CD_FRED_SERIES,
+    analysis: cdLastAnalysis,
+    sectors: cdSectorData,
+    industries: cdIndustryData
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cycle_analysis_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Analiza izvezena (JSON)');
+}
+
+function cdExportLatestCSV() {
+  if (!cdLastAnalysis) { showToast('Nema analize za izvoz', true); return; }
+  const rows = [['section','metric','value']];
+  const add = (section, metric, value) => rows.push([csvEscape(section), csvEscape(metric), csvEscape(value)]);
+  add('cycle','market_phase', cdLastAnalysis.marketCycle?.phase || '');
+  add('cycle','market_confidence', cdLastAnalysis.marketCycle?.confidence ?? '');
+  add('cycle','market_direction', cdLastAnalysis.marketCycle?.direction || '');
+  add('cycle','economic_phase', cdLastAnalysis.economicCycle?.phase || '');
+  add('cycle','economic_confidence', cdLastAnalysis.economicCycle?.confidence ?? '');
+  add('cycle','economic_direction', cdLastAnalysis.economicCycle?.direction || '');
+  Object.entries(cdLastAnalysis.macroScores || {}).forEach(([k,v]) => {
+    add('macro', `${k}_phase`, v?.phase || '');
+    add('macro', `${k}_signal`, v?.signal || '');
+  });
+  (cdLastAnalysis.sectorSignals?.leadingSectors || []).forEach((s, i) => add('sectors', `leading_${i+1}`, s));
+  (cdLastAnalysis.sectorSignals?.laggingSectors || []).forEach((s, i) => add('sectors', `lagging_${i+1}`, s));
+  add('sectors', 'sector_phase_vote', cdLastAnalysis.sectorSignals?.sectorPhaseVote || '');
+  add('meta', 'convergence', cdLastAnalysis.convergence || '');
+  (cdLastAnalysis.keyRisks || []).forEach((r, i) => add('risks', `risk_${i+1}`, r));
+  add('meta', 'summary', cdLastAnalysis.summary || '');
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cycle_analysis_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Analiza izvezena (CSV)');
+}
+
 // ─── HISTORY ───
 function cdSaveHistory(result) {
+
   let hist = [];
   try { hist = JSON.parse(localStorage.getItem(CD_STORAGE_KEY)) || []; } catch(e) {}
   hist.unshift({
