@@ -1595,9 +1595,18 @@
 
   <!-- Charts row -->
   <div class="cd-results-grid">
-    <div class="card" style="position:relative">
-      <div class="card-title">Macro Trend – FRED (3m vs 12m)</div>
-      <div class="chart-container" style="height:280px"><canvas id="cdMacroChart"></canvas></div>
+    <div class="card" style="position:relative" id="cdMacroCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div class="card-title">Macro Trend – FRED</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm cd-macro-tf-btn active" onclick="cdSetMacroTimeframe('3m', this)">3M</button>
+          <button class="btn btn-secondary btn-sm cd-macro-tf-btn" onclick="cdSetMacroTimeframe('1y', this)">1Y</button>
+          <button class="btn btn-secondary btn-sm cd-macro-tf-btn" onclick="cdSetMacroTimeframe('2y', this)">2Y</button>
+          <button class="btn btn-secondary btn-sm cd-macro-tf-btn" onclick="cdSetMacroTimeframe('5y', this)">5Y</button>
+          <button class="btn btn-secondary btn-sm" id="cdMacroZoomBtn" onclick="cdToggleMacroChartSize()">⤢ Povećaj</button>
+        </div>
+      </div>
+      <div class="chart-container" id="cdMacroChartWrap" style="height:280px"><canvas id="cdMacroChart"></canvas></div>
     </div>
     <div class="card" style="position:relative">
       <div class="card-title">Sektori – rang po periodu</div>
@@ -1663,6 +1672,11 @@
         <div class="card-title">📝 Sažetak analize</div>
         <div id="cdSummary" style="font-size:14px;line-height:1.7;color:var(--text)">—</div>
         <div id="cdTimestamp" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:12px">—</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestJSON()">Izvoz objektivnih podataka (JSON)</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestCSV()">Izvoz objektivnih podataka (CSV)</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportExternalAIPrompt()">Preuzmi prompt za vanjski AI</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1812,10 +1826,9 @@ const AI_PROVIDERS = {
     keyName: 'groq_api_key',
     endpoint: 'https://api.groq.com/openai/v1/chat/completions',
     models: [
-      { id: 'llama-3.2-90b-vision-preview', label: 'Llama 3.2 90B Vision', vision: true },
-      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout', vision: true },
       { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', vision: false },
-      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B', vision: false }
+      { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant', vision: false },
+      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout', vision: true }
     ],
     buildHeaders: key => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }),
     buildBody: (model, msgs) => ({ model, messages: msgs, temperature: 0.3, max_tokens: 4096 })
@@ -1825,8 +1838,8 @@ const AI_PROVIDERS = {
     keyName: 'gemini_api_key',
     models: [
       { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', vision: true },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', vision: true },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', vision: true }
+      { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite', vision: true },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', vision: true }
     ]
   },
   openrouter: {
@@ -1834,12 +1847,18 @@ const AI_PROVIDERS = {
     keyName: 'openrouter_api_key',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     models: [
-      { id: 'meta-llama/llama-3.2-90b-vision-instruct:free', label: 'Llama 3.2 90B Vision (Free)', vision: true },
-      { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)', vision: true },
+      { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)', vision: false },
       { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Free)', vision: false },
-      { id: 'mistralai/mistral-small-3.1-24b-instruct:free', label: 'Mistral Small 3.1 (Free)', vision: false }
+      { id: 'qwen/qwen3-32b:free', label: 'Qwen3 32B (Free)', vision: false },
+      { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (Free)', vision: false },
+      { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)', vision: true }
     ],
-    buildHeaders: key => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }),
+    buildHeaders: key => ({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer': 'https://rotacijanew.local',
+      'X-Title': 'RotacijaNew'
+    }),
     buildBody: (model, msgs) => ({ model, messages: msgs, temperature: 0.3, max_tokens: 4096 })
   },
   mistral: {
@@ -3961,28 +3980,53 @@ function clearAiChat() {
 // ═══════════════════════════════════════════════════════
 // AI API CALLER (universal)
 // ═══════════════════════════════════════════════════════
+function getFallbackModel(providerKey, currentModel) {
+  const candidates = {
+    groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+    openrouter: ['deepseek/deepseek-chat-v3-0324:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+    mistral: ['mistral-small-latest'],
+    gemini: ['gemini-2.0-flash', 'gemini-1.5-flash']
+  };
+  return (candidates[providerKey] || []).find(m => m !== currentModel) || null;
+}
+
 async function callAiApi(providerKey, apiKey, model, messages) {
   const prov = AI_PROVIDERS[providerKey];
 
   // Gemini uses different API format
   if (providerKey === 'gemini') {
-    return await callGemini(apiKey, model, messages);
+    try {
+      return await callGemini(apiKey, model, messages);
+    } catch (err) {
+      const fallback = getFallbackModel(providerKey, model);
+      if (!fallback) throw err;
+      showToast(`Gemini fallback model: ${fallback}`);
+      return await callGemini(apiKey, fallback, messages);
+    }
   }
 
-  // OpenAI-compatible (Groq, OpenRouter, Mistral)
-  const res = await fetch(prov.endpoint, {
-    method: 'POST',
-    headers: prov.buildHeaders(apiKey),
-    body: JSON.stringify(prov.buildBody(model, messages))
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`${prov.name} ${res.status}: ${txt.slice(0, 200)}`);
+  async function oneCall(modelId) {
+    const res = await fetch(prov.endpoint, {
+      method: 'POST',
+      headers: prov.buildHeaders(apiKey),
+      body: JSON.stringify(prov.buildBody(modelId, messages))
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`${prov.name} ${res.status}: ${txt.slice(0, 250)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'Prazan odgovor';
   }
 
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || 'Prazan odgovor';
+  try {
+    return await oneCall(model);
+  } catch (err) {
+    const fallback = getFallbackModel(providerKey, model);
+    if (!fallback) throw err;
+    showToast(`${prov.name} fallback model: ${fallback}`);
+    return await oneCall(fallback);
+  }
 }
 
 async function callGemini(apiKey, model, messages) {
@@ -4024,6 +4068,47 @@ async function callGemini(apiKey, model, messages) {
 
   const data = await res.json();
   return data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || 'Prazan odgovor';
+}
+
+function cdNormalizePhaseLabel(phase, type = 'economic') {
+  if (!phase) return phase;
+  const p = String(phase).toLowerCase();
+  if (type === 'market') {
+    if (p.includes('bottom')) return 'Market Bottom';
+    if (p.includes('bull')) return 'Bull Market';
+    if (p.includes('top')) return 'Market Top';
+    if (p.includes('bear')) return 'Bear Market';
+    if (p.includes('full') && p.includes('reces')) return 'Market Bottom';
+    if (p.includes('early') && p.includes('recov')) return 'Bull Market';
+    if (p.includes('full') && p.includes('recov')) return 'Market Top';
+    if (p.includes('early') && p.includes('reces')) return 'Bear Market';
+    return phase;
+  }
+  if (p.includes('full') && p.includes('reces')) return 'Full Recession';
+  if (p.includes('early') && p.includes('recov')) return 'Early Recovery';
+  if (p.includes('full') && p.includes('recov')) return 'Full Recovery';
+  if (p.includes('early') && p.includes('reces')) return 'Early Recession';
+  return phase;
+}
+
+function cdSafeParseJsonResponse(response) {
+  if (!response) throw new Error('Prazan odgovor modela');
+  const direct = response.match(/\{[\s\S]*\}/);
+  const candidate = (direct ? direct[0] : response)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+  try {
+    return JSON.parse(candidate);
+  } catch (e) {
+    const cleaned = candidate
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/\u0000/g, '')
+      .trim();
+    return JSON.parse(cleaned);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4248,6 +4333,103 @@ async function cdFetchAllData() {
   }
 }
 
+function cdSetMacroTimeframe(tf, btn) {
+  cdMacroTimeframe = tf;
+  document.querySelectorAll('.cd-macro-tf-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  cdRenderMacroChart();
+}
+
+function cdToggleMacroChartSize() {
+  cdMacroExpanded = !cdMacroExpanded;
+  const wrap = document.getElementById('cdMacroChartWrap');
+  const btn = document.getElementById('cdMacroZoomBtn');
+  if (wrap) wrap.style.height = cdMacroExpanded ? '520px' : '280px';
+  if (btn) btn.textContent = cdMacroExpanded ? '⤡ Smanji' : '⤢ Povećaj';
+  cdRenderMacroChart();
+}
+
+function cdSliceByTimeframe(series = []) {
+  const limits = { '3m': 4, '1y': 13, '2y': 25, '5y': 61 };
+  const n = limits[cdMacroTimeframe] || limits['3m'];
+  if (!Array.isArray(series) || series.length <= n) return series || [];
+  return series.slice(series.length - n);
+}
+
+function cdMacroPctChange(series = [], monthsBack = 3) {
+  if (!series || series.length === 0) return 0;
+  const steps = monthsBack === 12 ? 13 : 4;
+  const idx = Math.max(0, series.length - steps);
+  const curr = series[series.length - 1]?.value ?? 0;
+  const prev = series[idx]?.value ?? curr;
+  return ((curr - prev) / Math.abs(prev || 1)) * 100;
+}
+
+function cdMacroStovallSignalMap() {
+  const sent = cdMacroData.UMCSENT || [];
+  const indp = cdMacroData.INDPRO || [];
+  const rates = cdMacroData.DGS5 || [];
+  const yc = cdMacroData.T10Y2Y || [];
+
+  const sent3 = cdMacroPctChange(sent, 3), sent12 = cdMacroPctChange(sent, 12);
+  const ind3 = cdMacroPctChange(indp, 3), ind12 = cdMacroPctChange(indp, 12);
+  const r3 = cdMacroPctChange(rates, 3), r12 = cdMacroPctChange(rates, 12);
+  const yc3 = cdMacroPctChange(yc, 3);
+  const ycNow = yc.length ? yc[yc.length - 1].value : 0;
+
+  let consumer = 'Rising';
+  if (sent3 <= -3 && sent12 <= -3) consumer = 'Falling Sharply';
+  else if (sent3 < -0.5) consumer = 'Declining';
+  else if (sent3 > 0.5 && sent12 < 0) consumer = 'Reviving';
+
+  let industrial = 'Rising';
+  if (ind3 < -0.5) industrial = 'Falling';
+  else if (Math.abs(ind3) <= 0.5) industrial = 'Flat';
+  else if (ind3 > 0.5 && ind12 < 0) industrial = 'Bottoming Out';
+
+  let interest = 'Bottoming Out';
+  if (r3 < -1) interest = 'Falling';
+  else if (Math.abs(r3) <= 0.5 && r12 > 2) interest = 'Peaking';
+  else if (r3 > 0.5) interest = 'Rising Rapidly';
+
+  let curve = 'Normal';
+  if (ycNow <= 0) curve = 'Flat/Inverted';
+  else if (yc3 < -5) curve = 'Flattening Out';
+  else if (yc3 > 5) curve = 'Normal (Steep)';
+
+  return {
+    'Consumer Expectations': consumer,
+    'Industrial Production': industrial,
+    'Interest Rates': interest,
+    'Yield Curve': curve
+  };
+}
+
+function cdRenderStovallChecks() {
+  const tbody = document.getElementById('cdStovallTableBody');
+  if (!tbody) return;
+  const current = cdMacroStovallSignalMap();
+  const rows = [
+    { n: 'Consumer Expectations', vals: ['Reviving', 'Rising', 'Declining', 'Falling Sharply'] },
+    { n: 'Industrial Production', vals: ['Bottoming Out', 'Rising', 'Flat', 'Falling'] },
+    { n: 'Interest Rates', vals: ['Falling', 'Bottoming Out', 'Rising Rapidly', 'Peaking'] },
+    { n: 'Yield Curve', vals: ['Normal', 'Normal (Steep)', 'Flattening Out', 'Flat/Inverted'] }
+  ];
+  tbody.innerHTML = rows.map((row, rIdx) => {
+    const isLast = rIdx === rows.length - 1;
+    const btm = isLast ? '' : 'border-bottom:1px solid var(--border)';
+    const tds = row.vals.map(v => {
+      const checked = current[row.n] === v;
+      const mark = checked ? '<span style="color:#22d3a0;font-weight:700">✓</span> ' : '<span style="opacity:0.25">○</span> ';
+      return `<td style="padding:5px 10px;color:var(--text-secondary);text-align:center;${btm}">${mark}${v}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="text-align:left;padding:5px 10px;color:var(--text-secondary);${btm}">${row.n}</td>
+      ${tds}
+    </tr>`;
+  }).join('');
+}
+
 // ─── RENDER MACRO CARDS ───
 function cdRenderMacroCards() {
   CD_FRED_SERIES.forEach(s => {
@@ -4280,6 +4462,7 @@ function cdRenderMacroCards() {
 
     cdDrawSparkline(`cdSpark-${s}`, d.map(p => p.value));
   });
+  cdRenderStovallChecks();
 }
 
 function cdDrawSparkline(id, values) {
@@ -4459,10 +4642,10 @@ function cdRenderCycleSVG() {
   html += `<line x1="${PAD}" y1="${curveMid}" x2="${W-PAD}" y2="${curveMid}" stroke="var(--border)" stroke-dasharray="3,3" opacity="0.4"/>`;
 
   // ═══ SINE CURVES ═══
-  // Market (orange, thicker) LEADS — peaks in Early Recovery (~30%)
-  // Economic (blue) LAGS — peaks in Full Recovery (~50%)
-  const mktOff = -0.1 * Math.PI;   // peak at 30%, trough at 80%
-  const ecoOff = -0.5 * Math.PI;   // peak at 50%, trough at 0%/100%
+  // Market (orange, thicker) LEADS — peak poravnat s oznakom Market Top (50%)
+  // Economic (blue) LAGS — peak u Full Recovery (~62.5%)
+  const mktOff = -0.5 * Math.PI;   // peak at 50% (Market Top), trough at 0%/100%
+  const ecoOff = -0.75 * Math.PI;  // peak at 62.5% (Full Recovery), trough at 12.5%
   const mktAmp = curveAmp * 0.92;
   const ecoAmp = curveAmp * 0.72;
 
@@ -4499,12 +4682,20 @@ function cdRenderCycleSVG() {
     { l:'Bear Market',     c:'#c4b5fd', bg:'rgba(167,139,250,0.22)' }
   ];
   const rH = 26, eY = phaseY, mY = phaseY + rH + 3;
+  const phaseW = (W - 2 * PAD) / 4;
   for (let i = 0; i < 4; i++) {
-    const bx = PAD + i*(W-2*PAD)/4, bw = (W-2*PAD)/4;
-    html += `<rect x="${bx}" y="${eY}" width="${bw}" height="${rH}" rx="2" fill="${econPh[i].bg}"/>`;
-    html += `<text x="${bx+bw/2}" y="${eY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${econPh[i].c}" font-weight="700">${econPh[i].l}</text>`;
-    html += `<rect x="${bx}" y="${mY}" width="${bw}" height="${rH}" rx="2" fill="${mktPh[i].bg}"/>`;
-    html += `<text x="${bx+bw/2}" y="${mY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${mktPh[i].c}" font-weight="700">${mktPh[i].l}</text>`;
+    const bx = PAD + i * phaseW;
+    html += `<rect x="${bx}" y="${eY}" width="${phaseW}" height="${rH}" rx="2" fill="${econPh[i].bg}"/>`;
+    html += `<text x="${bx+phaseW/2}" y="${eY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${econPh[i].c}" font-weight="700">${econPh[i].l}</text>`;
+  }
+
+  // Market faze su pomaknute unaprijed za pola faze (Stovall lead)
+  const marketCenters = [0.0, 0.25, 0.5, 0.75];
+  for (let i = 0; i < 4; i++) {
+    const centerX = PAD + marketCenters[i] * (W - 2 * PAD);
+    const bx = Math.max(PAD, Math.min(centerX - phaseW / 2, W - PAD - phaseW));
+    html += `<rect x="${bx}" y="${mY}" width="${phaseW}" height="${rH}" rx="2" fill="${mktPh[i].bg}"/>`;
+    html += `<text x="${bx+phaseW/2}" y="${mY+rH/2+1}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${mktPh[i].c}" font-weight="700">${mktPh[i].l}</text>`;
   }
   // Row labels
   html += `<text x="${PAD-4}" y="${eY+rH/2+1}" text-anchor="end" dominant-baseline="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="var(--text-dim)">ECON</text>`;
@@ -4518,19 +4709,20 @@ function cdRenderCycleSVG() {
 
   // ═══ AI MARKERS (pulsing dots on the curves) ═══
   if (cdLastAnalysis) {
-    const ph2f = { 'Full Recession':0.125, 'Early Recovery':0.375, 'Full Recovery':0.625, 'Early Recession':0.875 };
+    const econPh2f = { 'Full Recession':0.125, 'Early Recovery':0.375, 'Full Recovery':0.625, 'Early Recession':0.875 };
+    const marketPh2f = { 'Market Bottom':0.125, 'Bull Market':0.3125, 'Market Top':0.5, 'Bear Market':0.8125 };
     const dn = { 'entering':-0.06, 'mid':0, 'exiting':0.06 };
-    function dot(cyc, amp, off, col, lbl, flip) {
+    function dot(cyc, amp, off, col, lbl, flip, phaseMap) {
       if (!cyc?.phase) return;
-      const f = (ph2f[cyc.phase]||0.5) + (dn[cyc.direction]||0);
+      const f = (phaseMap[cyc.phase]||0.5) + (dn[cyc.direction]||0);
       const x = PAD + f*(W-2*PAD);
       const y = curveMid - amp * Math.sin(f*2*Math.PI + off);
       html += `<circle cx="${x}" cy="${y}" r="10" fill="${col}" opacity="0.2"><animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite"/></circle>`;
       html += `<circle cx="${x}" cy="${y}" r="6" fill="${col}" stroke="#0a0e1a" stroke-width="2"/>`;
       html += `<text x="${x}" y="${flip?y+22:y-16}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${col}" font-weight="700">${lbl} ${cyc.confidence}%</text>`;
     }
-    dot(cdLastAnalysis.marketCycle, mktAmp, mktOff, '#f59e0b', 'MKT', false);
-    dot(cdLastAnalysis.economicCycle, ecoAmp, ecoOff, '#38bdf8', 'ECON', true);
+    dot(cdLastAnalysis.marketCycle, mktAmp, mktOff, '#f59e0b', 'MKT', false, marketPh2f);
+    dot(cdLastAnalysis.economicCycle, ecoAmp, ecoOff, '#38bdf8', 'ECON', true, econPh2f);
   }
 
   svg.innerHTML = html;
@@ -4548,8 +4740,8 @@ function cdRenderMacroChart() {
 
   let labels = [];
   CD_FRED_SERIES.forEach(s => {
-    const d = cdMacroData[s];
-    if (!d) return;
+    const d = cdSliceByTimeframe(cdMacroData[s]);
+    if (!d || d.length === 0) return;
     if (d.length > labels.length) labels = d.map(p => p.date);
     const vals = d.map(p => p.value);
     const min = Math.min(...vals), max = Math.max(...vals);
@@ -4748,30 +4940,35 @@ async function cdRunAnalysis() {
 
 TEORIJA MODELA:
 Tržišni ciklus predvodi ekonomski ciklus za 6-12 mjeseci.
+Koristi točno 4 FRED indikatora (UMCSENT, INDPRO, T10Y2Y, DGS5) i Stovall leading/lagging sektore.
+NE MIJEŠAJ nazive ekonomskih faza i market faza.
+Ekonomske faze: Full Recession, Early Recovery, Full Recovery, Early Recession.
+Market faze: Market Bottom, Bull Market, Market Top, Bear Market.
+
 Postoje 4 faze s karakterističnim sektorskim liderima:
 
-FULL RECESSION / MARKET BOTTOM:
+FULL RECESSION (econ) / MARKET BOTTOM (market):
 - Vodeći sektori: Technology (XLK), Consumer Discretionary/Cyclical (XLY)
 - Consumer Expectations: Reviving (počinje rasti s dna)
 - Industrial Production: Bottoming Out
 - Interest Rates: Falling
 - Yield Curve: Normal (strmija)
 
-EARLY RECOVERY / BULL MARKET:
+EARLY RECOVERY (econ) / BULL MARKET (market):
 - Vodeći sektori: Comm. Services (XLC), Industrials (XLI), Materials (XLB)
 - Consumer Expectations: Rising
 - Industrial Production: Rising
 - Interest Rates: Bottoming Out
 - Yield Curve: Normal to Steep
 
-FULL RECOVERY / MARKET TOP:
+FULL RECOVERY (econ) / MARKET TOP (market):
 - Vodeći sektori: Energy (XLE), Health Care (XLV)
 - Consumer Expectations: Declining
 - Industrial Production: Flat/Slowing
 - Interest Rates: Rising Rapidly (Fed hiking)
 - Yield Curve: Flattening
 
-EARLY RECESSION / BEAR MARKET:
+EARLY RECESSION (econ) / BEAR MARKET (market):
 - Vodeći sektori: Financials (XLF), Consumer Staples/Defensive (XLP), Utilities (XLU), Real Estate (XLRE)
 - Consumer Expectations: Falling Sharply
 - Industrial Production: Falling
@@ -4779,11 +4976,11 @@ EARLY RECESSION / BEAR MARKET:
 - Yield Curve: Flat or Inverted
 
 METODOLOGIJA ANALIZE (Julius de Kempenaer pristup):
-1. Ocijeni svaki makro indikator i pridjeli mu fazu
-2. Ocijeni sektorsku relativnu snagu — koristi SVE periode (tjedno, mjesečno, 3M, 6M, godišnje, YTD) za cjelovitu sliku
+1. Ocijeni sva 4 FRED indikatora i pridjeli im ekonomsku fazu
+2. Ocijeni Stovall leading i lagging sektore — koristi SVE periode (tjedno, mjesečno, 3M, 6M, godišnje, YTD) za cjelovitu sliku
 3. Kratkoročni lideri (tjedno) signaliziraju PROMJENU faze, dugoročni lideri (godišnje, YTD) signaliziraju TRENUTNU fazu
 4. Ako su industrije dostupne, koristi ih za potvrdu sektorskih signala
-5. Kombiniraj makro + sektore + industrije u finalni zaključak
+5. Kombiniraj 4 FRED + leading/lagging sektore + industrije u finalni zaključak
 6. Market Cycle i Economic Cycle su ODVOJENE procjene
 
 VAŽNO: Model je grubi vodič, ne precizni sat. Faze se preklapaju i tranzicije traju.
@@ -4804,7 +5001,7 @@ Današnji datum: ${today}
 Odgovori ISKLJUČIVO u JSON formatu, bez ikakvog teksta izvan JSON-a:
 {
   "marketCycle": {
-    "phase": "Full Recession | Early Recovery | Full Recovery | Early Recession",
+    "phase": "Market Bottom | Bull Market | Market Top | Bear Market",
     "confidence": 0-100,
     "direction": "entering | mid | exiting"
   },
@@ -4836,11 +5033,9 @@ Odgovori ISKLJUČIVO u JSON formatu, bez ikakvog teksta izvan JSON-a:
     ];
     const response = await callAiApi(provKey, apiKey, model, messages);
 
-    let jsonStr = response;
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonStr = jsonMatch[0];
-
-    const result = JSON.parse(jsonStr);
+    const result = cdSafeParseJsonResponse(response);
+    if (result.marketCycle?.phase) result.marketCycle.phase = cdNormalizePhaseLabel(result.marketCycle.phase, 'market');
+    if (result.economicCycle?.phase) result.economicCycle.phase = cdNormalizePhaseLabel(result.economicCycle.phase, 'economic');
     cdLastAnalysis = result;
     cdDisplayResults(result);
     cdRenderCycleSVG();
@@ -4956,6 +5151,10 @@ function cdPhaseColor(phase) {
   if (p.includes('early') && p.includes('recov')) return 'var(--green)';
   if (p.includes('full') && p.includes('recov')) return 'var(--amber)';
   if (p.includes('early') && p.includes('reces')) return 'var(--purple)';
+  if (p.includes('bottom')) return 'var(--red)';
+  if (p.includes('bull')) return 'var(--green)';
+  if (p.includes('top')) return 'var(--amber)';
+  if (p.includes('bear')) return 'var(--purple)';
   return 'var(--text-dim)';
 }
 
@@ -4981,8 +5180,142 @@ function cdPhaseCardClass(phase) {
   return '';
 }
 
+function cdBuildExternalObjectivePayload() {
+  const fredData = {};
+  CD_FRED_SERIES.forEach(series => {
+    fredData[series] = (cdMacroData[series] || []).map(point => ({
+      date: point.date,
+      value: point.value
+    }));
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    source: 'RotacijaNew',
+    includesOnlyObjectiveData: true,
+    fredSeries: fredData,
+    sectors: (cdSectorData || []).map(s => ({
+      datum: s.datum || null,
+      name: s.name,
+      etf: s.etf,
+      stovallPhaseGroup: s.phase,
+      tjedno: s.tjedno ?? null,
+      miesecno: s.miesecno ?? null,
+      tromj: s.tromj ?? null,
+      polugod: s.polugod ?? null,
+      godisnje: s.godisnje ?? null,
+      ytd: s.ytd ?? null
+    })),
+    industries: (cdIndustryData || []).map(i => ({
+      datum: i.datum || null,
+      name: i.name,
+      tjedno: i.tjedno ?? null,
+      miesecno: i.miesecno ?? null,
+      tromj: i.tromj ?? null,
+      polugod: i.polugod ?? null,
+      godisnje: i.godisnje ?? null,
+      ytd: i.ytd ?? null
+    }))
+  };
+}
+
+function cdExportLatestJSON() {
+  const payload = cdBuildExternalObjectivePayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cycle_objective_data_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Objektivni podaci izvezeni (JSON)');
+}
+
+function cdExportLatestCSV() {
+  const payload = cdBuildExternalObjectivePayload();
+  const rows = [[
+    'section',
+    'entity',
+    'date',
+    'metric',
+    'value'
+  ]];
+
+  const add = (section, entity, date, metric, value) => {
+    rows.push([
+      csvEscape(section),
+      csvEscape(entity),
+      csvEscape(date),
+      csvEscape(metric),
+      csvEscape(value)
+    ]);
+  };
+
+  Object.entries(payload.fredSeries || {}).forEach(([series, points]) => {
+    (points || []).forEach(point => add('fred', series, point.date, 'value', point.value));
+  });
+
+  (payload.sectors || []).forEach(sec => {
+    const entity = `${sec.etf || ''} ${sec.name || ''}`.trim();
+    add('sector', entity, sec.datum || '', 'stovallPhaseGroup', sec.stovallPhaseGroup || '');
+    ['tjedno','miesecno','tromj','polugod','godisnje','ytd'].forEach(metric => add('sector', entity, sec.datum || '', metric, sec[metric]));
+  });
+
+  (payload.industries || []).forEach(ind => {
+    const entity = ind.name || '';
+    ['tjedno','miesecno','tromj','polugod','godisnje','ytd'].forEach(metric => add('industry', entity, ind.datum || '', metric, ind[metric]));
+  });
+
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cycle_objective_data_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Objektivni podaci izvezeni (CSV)');
+}
+
+function cdExportExternalAIPrompt() {
+  const prompt = `ULOGA: Ti si makro i tržišni analitičar specijaliziran za Stovall sector-rotation pristup.
+
+ZADATAK:
+1) Koristi ISKLJUČIVO priložene objektivne podatke iz exporta aplikacije (FRED serije + sektori + industrije).
+2) Nadopuni analizu vlastitom bazom znanja i aktualnom web pretragom (monetarna politika, inflacija, tržišni režim, earnings/breadth).
+3) Procijeni ODVOJENO:
+   - Economic Cycle fazu: Full Recession | Early Recovery | Full Recovery | Early Recession
+   - Market Cycle fazu: Market Bottom | Bull Market | Market Top | Bear Market
+4) Usporedi 4 FRED indikatora (UMCSENT, INDPRO, T10Y2Y, DGS5) sa Stovall leading/lagging sektorima.
+5) Obavezno navedi razinu pouzdanosti (0-100) i je li faza entering/mid/exiting.
+6) Daj preporuku akcije sukladno cilju korisnika (kapitalni rast, očuvanje kapitala, balans), uz jasno istaknute rizike.
+
+FORMAT ODGOVORA (JSON):
+{
+  "economicCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
+  "marketCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
+  "evidence": {
+    "fred": ["..."],
+    "sectorRotation": ["..."],
+    "macroWebFindings": ["..."]
+  },
+  "portfolioImplication": {
+    "userGoal": "growth|capital-preservation|balanced",
+    "stance": "risk-on|neutral|risk-off",
+    "actions": ["..."]
+  }
+}`;
+
+  const blob = new Blob([prompt], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `external_ai_prompt_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Prompt za vanjski AI preuzet');
+}
+
 // ─── HISTORY ───
 function cdSaveHistory(result) {
+
   let hist = [];
   try { hist = JSON.parse(localStorage.getItem(CD_STORAGE_KEY)) || []; } catch(e) {}
   hist.unshift({
@@ -5078,6 +5411,7 @@ function initCycleDetectorTab() {
   cdRenderSectorChart();
   cdRenderTrendChart();
   cdRenderCycleSVG();
+  cdRenderStovallChecks();
   cdRenderHistory();
 
   // Check FRED cache
@@ -5090,6 +5424,7 @@ function initCycleDetectorTab() {
       if (hasFreshCache) {
         cdRenderMacroCards();
         cdRenderMacroChart();
+        cdRenderStovallChecks();
       }
     }
   } catch(e) {}
