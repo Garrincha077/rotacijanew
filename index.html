@@ -1816,10 +1816,9 @@ const AI_PROVIDERS = {
     keyName: 'groq_api_key',
     endpoint: 'https://api.groq.com/openai/v1/chat/completions',
     models: [
-      { id: 'llama-3.2-90b-vision-preview', label: 'Llama 3.2 90B Vision', vision: true },
-      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout', vision: true },
       { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', vision: false },
-      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B', vision: false }
+      { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant', vision: false },
+      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout', vision: true }
     ],
     buildHeaders: key => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }),
     buildBody: (model, msgs) => ({ model, messages: msgs, temperature: 0.3, max_tokens: 4096 })
@@ -1829,8 +1828,8 @@ const AI_PROVIDERS = {
     keyName: 'gemini_api_key',
     models: [
       { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', vision: true },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', vision: true },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', vision: true }
+      { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite', vision: true },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', vision: true }
     ]
   },
   openrouter: {
@@ -1838,12 +1837,18 @@ const AI_PROVIDERS = {
     keyName: 'openrouter_api_key',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     models: [
-      { id: 'meta-llama/llama-3.2-90b-vision-instruct:free', label: 'Llama 3.2 90B Vision (Free)', vision: true },
-      { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)', vision: true },
+      { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)', vision: false },
       { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Free)', vision: false },
-      { id: 'mistralai/mistral-small-3.1-24b-instruct:free', label: 'Mistral Small 3.1 (Free)', vision: false }
+      { id: 'qwen/qwen3-32b:free', label: 'Qwen3 32B (Free)', vision: false },
+      { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (Free)', vision: false },
+      { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)', vision: true }
     ],
-    buildHeaders: key => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }),
+    buildHeaders: key => ({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer': 'https://rotacijanew.local',
+      'X-Title': 'RotacijaNew'
+    }),
     buildBody: (model, msgs) => ({ model, messages: msgs, temperature: 0.3, max_tokens: 4096 })
   },
   mistral: {
@@ -3965,28 +3970,53 @@ function clearAiChat() {
 // ═══════════════════════════════════════════════════════
 // AI API CALLER (universal)
 // ═══════════════════════════════════════════════════════
+function getFallbackModel(providerKey, currentModel) {
+  const candidates = {
+    groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+    openrouter: ['deepseek/deepseek-chat-v3-0324:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+    mistral: ['mistral-small-latest'],
+    gemini: ['gemini-2.0-flash', 'gemini-1.5-flash']
+  };
+  return (candidates[providerKey] || []).find(m => m !== currentModel) || null;
+}
+
 async function callAiApi(providerKey, apiKey, model, messages) {
   const prov = AI_PROVIDERS[providerKey];
 
   // Gemini uses different API format
   if (providerKey === 'gemini') {
-    return await callGemini(apiKey, model, messages);
+    try {
+      return await callGemini(apiKey, model, messages);
+    } catch (err) {
+      const fallback = getFallbackModel(providerKey, model);
+      if (!fallback) throw err;
+      showToast(`Gemini fallback model: ${fallback}`);
+      return await callGemini(apiKey, fallback, messages);
+    }
   }
 
-  // OpenAI-compatible (Groq, OpenRouter, Mistral)
-  const res = await fetch(prov.endpoint, {
-    method: 'POST',
-    headers: prov.buildHeaders(apiKey),
-    body: JSON.stringify(prov.buildBody(model, messages))
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`${prov.name} ${res.status}: ${txt.slice(0, 200)}`);
+  async function oneCall(modelId) {
+    const res = await fetch(prov.endpoint, {
+      method: 'POST',
+      headers: prov.buildHeaders(apiKey),
+      body: JSON.stringify(prov.buildBody(modelId, messages))
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`${prov.name} ${res.status}: ${txt.slice(0, 250)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'Prazan odgovor';
   }
 
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || 'Prazan odgovor';
+  try {
+    return await oneCall(model);
+  } catch (err) {
+    const fallback = getFallbackModel(providerKey, model);
+    if (!fallback) throw err;
+    showToast(`${prov.name} fallback model: ${fallback}`);
+    return await oneCall(fallback);
+  }
 }
 
 async function callGemini(apiKey, model, messages) {
@@ -4504,10 +4534,10 @@ function cdRenderCycleSVG() {
   html += `<line x1="${PAD}" y1="${curveMid}" x2="${W-PAD}" y2="${curveMid}" stroke="var(--border)" stroke-dasharray="3,3" opacity="0.4"/>`;
 
   // ═══ SINE CURVES ═══
-  // Market (orange, thicker) LEADS — peaks in Early Recovery (~30%)
-  // Economic (blue) LAGS — peaks in Full Recovery (~50%)
-  const mktOff = -0.1 * Math.PI;   // peak at 30%, trough at 80%
-  const ecoOff = -0.5 * Math.PI;   // peak at 50%, trough at 0%/100%
+  // Market (orange, thicker) LEADS — peak poravnat s oznakom Market Top (50%)
+  // Economic (blue) LAGS — peak u Full Recovery (~62.5%)
+  const mktOff = -0.5 * Math.PI;   // peak at 50% (Market Top), trough at 0%/100%
+  const ecoOff = -0.75 * Math.PI;  // peak at 62.5% (Full Recovery), trough at 12.5%
   const mktAmp = curveAmp * 0.92;
   const ecoAmp = curveAmp * 0.72;
 
@@ -4572,7 +4602,7 @@ function cdRenderCycleSVG() {
   // ═══ AI MARKERS (pulsing dots on the curves) ═══
   if (cdLastAnalysis) {
     const econPh2f = { 'Full Recession':0.125, 'Early Recovery':0.375, 'Full Recovery':0.625, 'Early Recession':0.875 };
-    const marketPh2f = { 'Market Bottom':0.125, 'Bull Market':0.375, 'Market Top':0.5, 'Bear Market':0.875 };
+    const marketPh2f = { 'Market Bottom':0.125, 'Bull Market':0.3125, 'Market Top':0.5, 'Bear Market':0.8125 };
     const dn = { 'entering':-0.06, 'mid':0, 'exiting':0.06 };
     function dot(cyc, amp, off, col, lbl, flip, phaseMap) {
       if (!cyc?.phase) return;
