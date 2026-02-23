@@ -1664,8 +1664,9 @@
         <div id="cdSummary" style="font-size:14px;line-height:1.7;color:var(--text)">—</div>
         <div id="cdTimestamp" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:12px">—</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestJSON()">Izvoz analize JSON</button>
-          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestCSV()">Izvoz analize CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestJSON()">Izvoz objektivnih podataka (JSON)</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportLatestCSV()">Izvoz objektivnih podataka (CSV)</button>
+          <button class="btn btn-secondary btn-sm" onclick="cdExportExternalAIPrompt()">Preuzmi prompt za vanjski AI</button>
         </div>
       </div>
     </div>
@@ -5072,52 +5073,137 @@ function cdPhaseCardClass(phase) {
   return '';
 }
 
-function cdExportLatestJSON() {
-  if (!cdLastAnalysis) { showToast('Nema analize za izvoz', true); return; }
-  const payload = {
+function cdBuildExternalObjectivePayload() {
+  const fredData = {};
+  CD_FRED_SERIES.forEach(series => {
+    fredData[series] = (cdMacroData[series] || []).map(point => ({
+      date: point.date,
+      value: point.value
+    }));
+  });
+
+  return {
     generatedAt: new Date().toISOString(),
-    fredSeries: CD_FRED_SERIES,
-    analysis: cdLastAnalysis,
-    sectors: cdSectorData,
-    industries: cdIndustryData
+    source: 'RotacijaNew',
+    includesOnlyObjectiveData: true,
+    fredSeries: fredData,
+    sectors: (cdSectorData || []).map(s => ({
+      datum: s.datum || null,
+      name: s.name,
+      etf: s.etf,
+      stovallPhaseGroup: s.phase,
+      tjedno: s.tjedno ?? null,
+      miesecno: s.miesecno ?? null,
+      tromj: s.tromj ?? null,
+      polugod: s.polugod ?? null,
+      godisnje: s.godisnje ?? null,
+      ytd: s.ytd ?? null
+    })),
+    industries: (cdIndustryData || []).map(i => ({
+      datum: i.datum || null,
+      name: i.name,
+      tjedno: i.tjedno ?? null,
+      miesecno: i.miesecno ?? null,
+      tromj: i.tromj ?? null,
+      polugod: i.polugod ?? null,
+      godisnje: i.godisnje ?? null,
+      ytd: i.ytd ?? null
+    }))
   };
+}
+
+function cdExportLatestJSON() {
+  const payload = cdBuildExternalObjectivePayload();
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `cycle_analysis_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `cycle_objective_data_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast('Analiza izvezena (JSON)');
+  showToast('Objektivni podaci izvezeni (JSON)');
 }
 
 function cdExportLatestCSV() {
-  if (!cdLastAnalysis) { showToast('Nema analize za izvoz', true); return; }
-  const rows = [['section','metric','value']];
-  const add = (section, metric, value) => rows.push([csvEscape(section), csvEscape(metric), csvEscape(value)]);
-  add('cycle','market_phase', cdLastAnalysis.marketCycle?.phase || '');
-  add('cycle','market_confidence', cdLastAnalysis.marketCycle?.confidence ?? '');
-  add('cycle','market_direction', cdLastAnalysis.marketCycle?.direction || '');
-  add('cycle','economic_phase', cdLastAnalysis.economicCycle?.phase || '');
-  add('cycle','economic_confidence', cdLastAnalysis.economicCycle?.confidence ?? '');
-  add('cycle','economic_direction', cdLastAnalysis.economicCycle?.direction || '');
-  Object.entries(cdLastAnalysis.macroScores || {}).forEach(([k,v]) => {
-    add('macro', `${k}_phase`, v?.phase || '');
-    add('macro', `${k}_signal`, v?.signal || '');
+  const payload = cdBuildExternalObjectivePayload();
+  const rows = [[
+    'section',
+    'entity',
+    'date',
+    'metric',
+    'value'
+  ]];
+
+  const add = (section, entity, date, metric, value) => {
+    rows.push([
+      csvEscape(section),
+      csvEscape(entity),
+      csvEscape(date),
+      csvEscape(metric),
+      csvEscape(value)
+    ]);
+  };
+
+  Object.entries(payload.fredSeries || {}).forEach(([series, points]) => {
+    (points || []).forEach(point => add('fred', series, point.date, 'value', point.value));
   });
-  (cdLastAnalysis.sectorSignals?.leadingSectors || []).forEach((s, i) => add('sectors', `leading_${i+1}`, s));
-  (cdLastAnalysis.sectorSignals?.laggingSectors || []).forEach((s, i) => add('sectors', `lagging_${i+1}`, s));
-  add('sectors', 'sector_phase_vote', cdLastAnalysis.sectorSignals?.sectorPhaseVote || '');
-  add('meta', 'convergence', cdLastAnalysis.convergence || '');
-  (cdLastAnalysis.keyRisks || []).forEach((r, i) => add('risks', `risk_${i+1}`, r));
-  add('meta', 'summary', cdLastAnalysis.summary || '');
+
+  (payload.sectors || []).forEach(sec => {
+    const entity = `${sec.etf || ''} ${sec.name || ''}`.trim();
+    add('sector', entity, sec.datum || '', 'stovallPhaseGroup', sec.stovallPhaseGroup || '');
+    ['tjedno','miesecno','tromj','polugod','godisnje','ytd'].forEach(metric => add('sector', entity, sec.datum || '', metric, sec[metric]));
+  });
+
+  (payload.industries || []).forEach(ind => {
+    const entity = ind.name || '';
+    ['tjedno','miesecno','tromj','polugod','godisnje','ytd'].forEach(metric => add('industry', entity, ind.datum || '', metric, ind[metric]));
+  });
+
   const csv = rows.map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `cycle_analysis_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `cycle_objective_data_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
-  showToast('Analiza izvezena (CSV)');
+  showToast('Objektivni podaci izvezeni (CSV)');
+}
+
+function cdExportExternalAIPrompt() {
+  const prompt = `ULOGA: Ti si makro i tržišni analitičar specijaliziran za Stovall sector-rotation pristup.
+
+ZADATAK:
+1) Koristi ISKLJUČIVO priložene objektivne podatke iz exporta aplikacije (FRED serije + sektori + industrije).
+2) Nadopuni analizu vlastitom bazom znanja i aktualnom web pretragom (monetarna politika, inflacija, tržišni režim, earnings/breadth).
+3) Procijeni ODVOJENO:
+   - Economic Cycle fazu: Full Recession | Early Recovery | Full Recovery | Early Recession
+   - Market Cycle fazu: Market Bottom | Bull Market | Market Top | Bear Market
+4) Usporedi 4 FRED indikatora (UMCSENT, INDPRO, T10Y2Y, DGS5) sa Stovall leading/lagging sektorima.
+5) Obavezno navedi razinu pouzdanosti (0-100) i je li faza entering/mid/exiting.
+6) Daj preporuku akcije sukladno cilju korisnika (kapitalni rast, očuvanje kapitala, balans), uz jasno istaknute rizike.
+
+FORMAT ODGOVORA (JSON):
+{
+  "economicCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
+  "marketCycle": {"phase":"...","confidence":0,"direction":"entering|mid|exiting"},
+  "evidence": {
+    "fred": ["..."],
+    "sectorRotation": ["..."],
+    "macroWebFindings": ["..."]
+  },
+  "portfolioImplication": {
+    "userGoal": "growth|capital-preservation|balanced",
+    "stance": "risk-on|neutral|risk-off",
+    "actions": ["..."]
+  }
+}`;
+
+  const blob = new Blob([prompt], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `external_ai_prompt_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Prompt za vanjski AI preuzet');
 }
 
 // ─── HISTORY ───
