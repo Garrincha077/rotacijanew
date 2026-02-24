@@ -1888,7 +1888,8 @@ const ETF_PROVIDERS = {
   stooq: { name: 'Stooq CSV (fallback-first)', keyName: 'etf_stooq_key', needsKey: false, note: 'Najstabilnije za browser bez API ključa (EOD).' },
   yahoo: { name: 'Yahoo Finance (unofficial)', keyName: 'etf_yahoo_key', needsKey: false, note: 'Brz za prototip, ali može pasti zbog CORS-a.' },
   alphavantage: { name: 'Alpha Vantage', keyName: 'etf_alpha_key', needsKey: true, note: 'Free key: https://www.alphavantage.co/support/#api-key' },
-  twelvedata: { name: 'Twelve Data', keyName: 'etf_twelve_key', needsKey: true, note: 'Free key: https://twelvedata.com/' }
+  twelvedata: { name: 'Twelve Data', keyName: 'etf_twelve_key', needsKey: true, note: 'Free key: https://twelvedata.com/' },
+  massive: { name: 'Massive (Polygon)', keyName: 'etf_massive_key', needsKey: true, note: 'Free key: https://massive.com/docs/rest/quickstart#making-your-first-api-request' }
 };
 
 const ETF_COUNTRY_LIST = [
@@ -1911,7 +1912,17 @@ const ETF_COUNTRY_LIST = [
   { name:'Sweden ETF', ticker:'EWD', country:'Švedska (UCITS: IQQS)' },
   { name:'Taiwan ETF', ticker:'EWT', country:'Tajvan (UCITS: ITWN)' },
   { name:'Singapore ETF', ticker:'EWS', country:'Singapur (UCITS: ISGN)' },
-  { name:'South Africa ETF', ticker:'EZA', country:'JAR (UCITS: IZAP)' }
+  { name:'South Africa ETF', ticker:'EZA', country:'JAR (UCITS: IZAP)' },
+{ name:'China ETF', ticker:'MCHI', country:'Kina (UCITS: ICHN)' },
+  { name:'Hong Kong ETF', ticker:'EWH', country:'Hong Kong (UCITS: IHKD)' },
+  { name:'Israel ETF', ticker:'EIS', country:'Izrael (UCITS: ISRL)' },
+  { name:'Poland ETF', ticker:'EPOL', country:'Poljska (UCITS: IPOL)' },
+  { name:'Turkey ETF', ticker:'TUR', country:'Turska (UCITS: ITKY)' },
+  { name:'Indonesia ETF', ticker:'EIDO', country:'Indonezija (UCITS: IIND)' },
+  { name:'Vietnam ETF', ticker:'VNM', country:'Vijetnam (UCITS: VUCP)' },
+  { name:'Saudi Arabia ETF', ticker:'KSA', country:'Saudijska Arabija (UCITS: ISAU)' },
+  { name:'UAE ETF', ticker:'UAE', country:'UAE (UCITS: IUAE)' },
+  { name:'Argentina ETF', ticker:'ARGT', country:'Argentina (UCITS: ARGT-sličan)' }
 ];
 
 const ETF_THEME_LIST = [
@@ -1934,7 +1945,17 @@ const ETF_THEME_LIST = [
   { theme:'Healthcare Innovation', name:'ARK Innovation', ticker:'ARKK' },
   { theme:'Biotech', name:'SPDR S&P Biotech', ticker:'XBI' },
   { theme:'Water', name:'Invesco Water Resources', ticker:'PHO' },
-  { theme:'Commodities', name:'Invesco DB Commodity Index Tracking', ticker:'DBC' }
+  { theme:'Commodities', name:'Invesco DB Commodity Index Tracking', ticker:'DBC' },
+{ theme:'Nasdaq Growth', name:'Invesco QQQ Trust', ticker:'QQQ' },
+  { theme:'S&P Momentum', name:'iShares MSCI USA Momentum Factor', ticker:'MTUM' },
+  { theme:'Quality', name:'iShares MSCI USA Quality Factor', ticker:'QUAL' },
+  { theme:'Dividend Growth', name:'Vanguard Dividend Appreciation', ticker:'VIG' },
+  { theme:'High Dividend', name:'Schwab U.S. Dividend Equity', ticker:'SCHD' },
+  { theme:'Low Volatility', name:'Invesco S&P 500 Low Volatility', ticker:'SPLV' },
+  { theme:'Value', name:'Vanguard Value ETF', ticker:'VTV' },
+  { theme:'Growth', name:'Vanguard Growth ETF', ticker:'VUG' },
+  { theme:'Gold Miners', name:'VanEck Gold Miners', ticker:'GDX' },
+  { theme:'Silver Miners', name:'Global X Silver Miners', ticker:'SIL' }
 ];
 
 const AI_PROVIDERS = {
@@ -5794,6 +5815,23 @@ async function fetchEtfSeriesFromProvider(ticker, provider) {
     return data.values.map(r => ({ date: r.datetime.slice(0,10), close: parseFloat(r.close) })).filter(r => !Number.isNaN(r.close));
   }
 
+  if (provider === 'massive') {
+    const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
+    if (!key) throw new Error('Nedostaje Massive key');
+    const to = new Date();
+    const from = new Date();
+    from.setFullYear(to.getFullYear() - 3);
+    const f = from.toISOString().slice(0,10);
+    const t = to.toISOString().slice(0,10);
+    const url = `https://api.massive.com/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${f}/${t}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`;
+    const data = await (await fetch(url)).json();
+    if (!Array.isArray(data?.results)) throw new Error(data?.error || data?.message || 'Massive error');
+    return data.results.map(r => ({
+      date: new Date(r.t).toISOString().slice(0,10),
+      close: parseFloat(r.c)
+    })).filter(r => r.date && Number.isFinite(r.close));
+  }
+
   if (provider === 'yahoo') {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=3y&interval=1d`;
     const data = await (await fetch(url)).json();
@@ -5818,7 +5856,7 @@ async function fetchEtfSeriesFromProvider(ticker, provider) {
 
 async function fetchEtfSeries(ticker) {
   const preferred = localStorage.getItem('etf_provider') || 'stooq';
-  const tries = [preferred, 'stooq', 'yahoo', 'alphavantage', 'twelvedata'].filter((v, i, a) => a.indexOf(v) === i);
+  const tries = [preferred, 'massive', 'stooq', 'yahoo', 'alphavantage', 'twelvedata'].filter((v, i, a) => a.indexOf(v) === i);
   let lastErr = null;
   for (const p of tries) {
     try {
