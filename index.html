@@ -1723,39 +1723,73 @@
 <!-- TAB: ETF TRACKER                                       -->
 <!-- ═══════════════════════════════════════════════════════ -->
 <div id="tab-etf" class="tab-panel">
+  <div class="stats-row" style="grid-template-columns:repeat(4,1fr)" id="etfStatsRow">
+    <div class="stat-card"><div class="stat-value" id="etfStTotal">—</div><div class="stat-label">ETF-ova</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--green)" id="etfStS2">—</div><div class="stat-label">Stage 2</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--red)" id="etfStS4">—</div><div class="stat-label">Stage 4</div></div>
+    <div class="stat-card"><div class="stat-value" id="etfStCache">—</div><div class="stat-label">Cache starost</div></div>
+  </div>
+
   <div class="card">
-    <div class="card-title">ETF Tracker (EOD) – provider i API ključ</div>
-    <div class="form-header" style="grid-template-columns: 220px 1fr 160px;">
+    <div class="card-title">ETF Tracker – Massive proxy + realtime</div>
+    <div class="form-header" style="grid-template-columns: 220px 1fr 220px;">
       <div>
         <div class="form-label">Provider</div>
         <select id="etfProvider" onchange="onEtfProviderChange()"></select>
       </div>
       <div>
-        <div class="form-label">API ključ (opcionalno, ovisi o provideru)</div>
-        <input type="password" id="etfApiKey" placeholder="Unesi ključ ako provider traži API key">
+        <div class="form-label">Polygon / Massive API key</div>
+        <input type="password" id="etfApiKey" placeholder="Upiši Massive/Polygon API key">
       </div>
       <div>
         <div class="form-label">Akcije</div>
         <div class="btn-row">
           <button class="btn btn-secondary btn-sm" onclick="saveEtfApiKey()">Spremi ključ</button>
-          <button class="btn btn-primary btn-sm" onclick="refreshEtfData()">Osvježi EOD</button>
-          <button class="btn btn-secondary btn-sm" onclick="startEtfRealtime()">▶ RT start</button>
-          <button class="btn btn-secondary btn-sm" onclick="stopEtfRealtime()">■ RT stop</button>
+          <button class="btn btn-primary btn-sm" id="etfRefreshBtn" onclick="refreshEtfData()">Osvježi EOD</button>
+          <button class="btn btn-secondary btn-sm" onclick="startEtfRealtime()">▶ RT</button>
+          <button class="btn btn-secondary btn-sm" onclick="stopEtfRealtime()">■ Stop</button>
         </div>
       </div>
     </div>
     <div class="mono text-dim" style="font-size:12px" id="etfProviderNote"></div>
     <div class="mono" style="font-size:11px;margin-top:6px;color:var(--text-dim)" id="etfFetchStatus"></div>
-    <div class="mono" style="font-size:11px;margin-top:4px;color:var(--text-dim)">RT interval (sec): <input type="number" id="etfRtSec" min="5" step="1" value="15" style="width:80px;display:inline-block;padding:2px 6px"> <span id="etfRtStatus">RT: OFF</span></div>
+    <div class="mono" style="font-size:11px;margin-top:6px;color:var(--text-dim)" id="etfBackendStatus"></div>
+    <div style="margin-top:6px;display:flex;align-items:center;gap:8px" class="mono">
+      <span style="font-size:11px;color:var(--text-dim)">RT interval (sec):</span>
+      <input type="number" id="etfRtSec" min="5" step="5" value="15" style="width:80px;display:inline-block;padding:2px 6px">
+      <span id="etfRtStatus" style="font-size:11px;color:var(--text-dim)">RT: OFF</span>
+    </div>
+    <div id="etfProgressWrap" style="display:none;margin-top:8px">
+      <div style="height:4px;background:var(--border);border-radius:3px;overflow:hidden"><div id="etfProgressFill" style="height:100%;width:0;background:linear-gradient(90deg,var(--amber),var(--green))"></div></div>
+      <div id="etfProgressTxt" class="mono" style="font-size:10px;color:var(--text-dim);margin-top:4px">0/0</div>
+    </div>
   </div>
 
   <div class="card">
-    <div class="card-title">Nacionalni ETF-ovi (US + UCITS/slični)</div>
+    <div class="card-title">ETF filteri</div>
+    <div class="period-tabs" id="etfFilterTabs">
+      <button class="period-tab active" data-filter="all" onclick="setEtfFilter('all', this)">Svi</button>
+      <button class="period-tab" data-filter="s2" onclick="setEtfFilter('s2', this)">Stage 2</button>
+      <button class="period-tab" data-filter="s3" onclick="setEtfFilter('s3', this)">Stage 3</button>
+      <button class="period-tab" data-filter="s4" onclick="setEtfFilter('s4', this)">Stage 4</button>
+      <button class="period-tab" data-filter="aboveMa200" onclick="setEtfFilter('aboveMa200', this)">Iznad MA200</button>
+      <button class="period-tab" data-filter="oversold" onclick="setEtfFilter('oversold', this)">RSI ≤ 30</button>
+      <button class="period-tab" data-filter="watch" onclick="setEtfFilter('watch', this)">Watch</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Automatski scanner</div>
+    <div id="etfScannerGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Nacionalni ETF-ovi</div>
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
-            <th>ETF</th><th>Ticker</th><th>Država / UCITS</th><th>Cijena</th><th>Trend</th><th>Weinstein</th><th>1D</th><th>1W</th><th>1M</th><th>YTD</th><th>1Y</th><th>Watch</th>
+            <th style="text-align:left" onclick="setEtfSort('name')">ETF</th><th onclick="setEtfSort('ticker')">Ticker</th><th style="text-align:left">Država / UCITS</th><th onclick="setEtfSort('price')">Cijena</th><th onclick="setEtfSort('stage')">Stage</th><th onclick="setEtfSort('rsi')">RSI</th><th onclick="setEtfSort('d1')">1D</th><th onclick="setEtfSort('w1')">1W</th><th onclick="setEtfSort('m1')">1M</th><th onclick="setEtfSort('ytd')">YTD</th><th onclick="setEtfSort('y1')">1Y</th><th>Watch</th>
           </tr>
         </thead>
         <tbody id="etfCountryBody"></tbody>
@@ -1769,7 +1803,7 @@
       <table>
         <thead>
           <tr>
-            <th>Tema</th><th>ETF</th><th>Ticker</th><th>Cijena</th><th>Trend</th><th>Weinstein</th><th>1D</th><th>1W</th><th>1M</th><th>YTD</th><th>1Y</th><th>Watch</th>
+            <th style="text-align:left">Tema</th><th style="text-align:left" onclick="setEtfSort('name')">ETF</th><th onclick="setEtfSort('ticker')">Ticker</th><th onclick="setEtfSort('price')">Cijena</th><th onclick="setEtfSort('stage')">Stage</th><th onclick="setEtfSort('rsi')">RSI</th><th onclick="setEtfSort('d1')">1D</th><th onclick="setEtfSort('w1')">1W</th><th onclick="setEtfSort('m1')">1M</th><th onclick="setEtfSort('ytd')">YTD</th><th onclick="setEtfSort('y1')">1Y</th><th>Watch</th>
           </tr>
         </thead>
         <tbody id="etfThemeBody"></tbody>
@@ -1780,6 +1814,13 @@
   <div class="card">
     <div class="card-title">Moja lokalna watchlista</div>
     <div id="etfWatchlist" class="mono" style="font-size:13px;color:var(--text-dim)">Nema odabranih ETF-ova.</div>
+  </div>
+
+  <div id="etfModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:999;align-items:center;justify-content:center;padding:20px" onclick="if(event.target.id==='etfModal')closeEtfModal()">
+    <div style="background:var(--bg2);border:1px solid var(--border);padding:20px;border-radius:8px;max-width:720px;width:100%;max-height:92vh;overflow:auto;position:relative">
+      <button class="btn btn-secondary btn-sm" style="position:absolute;right:12px;top:12px" onclick="closeEtfModal()">✕</button>
+      <div id="etfModalContent"></div>
+    </div>
   </div>
 </div>
 

@@ -3,6 +3,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode
 from urllib.request import urlopen, Request
 import json
+from datetime import datetime, timedelta
 
 PORT = 8123
 BASES = ["https://api.polygon.io", "https://api.massive.com"]
@@ -47,9 +48,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, 400, {"error": "ticker missing"})
             if not api_key:
                 return json_response(self, 400, {"error": "apiKey missing"})
-            from datetime import datetime
             to = datetime.utcnow().date()
-            frm = to.replace(year=to.year - years)
+            frm = to - timedelta(days=365 * years)
             try:
                 data = fetch_massive(
                     f"/v2/aggs/ticker/{ticker}/range/1/day/{frm.isoformat()}/{to.isoformat()}",
@@ -62,7 +62,7 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 rows = data.get("results") or []
                 mapped = [
-                    {"date": __import__('datetime').datetime.utcfromtimestamp(r["t"] / 1000).date().isoformat(), "close": r.get("c")}
+                    {"date": datetime.utcfromtimestamp(r["t"] / 1000).date().isoformat(), "close": r.get("c")}
                     for r in rows
                     if isinstance(r, dict) and r.get("c") is not None and r.get("t")
                 ]
