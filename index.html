@@ -974,6 +974,7 @@
   <button class="nav-btn" onclick="showTab('povijest')">[ Povijest ]</button>
   <button class="nav-btn" onclick="showTab('ai')" style="color:var(--purple)">[ ◆ AI Asistent ]</button>
   <button class="nav-btn" onclick="showTab('ciklus')" style="color:var(--cyan)">[ 🔄 Cycle Detector ]</button>
+  <button class="nav-btn" onclick="showTab('etf')" style="color:var(--green)">[ 📈 ETF Tracker ]</button>
   <button class="nav-btn" onclick="showTab('upute')">[ Upute ]</button>
 </nav>
 
@@ -1717,6 +1718,67 @@
   </div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB: ETF TRACKER                                       -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div id="tab-etf" class="tab-panel">
+  <div class="card">
+    <div class="card-title">ETF Tracker (EOD) – provider i API ključ</div>
+    <div class="form-header" style="grid-template-columns: 220px 1fr 160px;">
+      <div>
+        <div class="form-label">Provider</div>
+        <select id="etfProvider" onchange="onEtfProviderChange()"></select>
+      </div>
+      <div>
+        <div class="form-label">API ključ (opcionalno, ovisi o provideru)</div>
+        <input type="password" id="etfApiKey" placeholder="Unesi ključ ako provider traži API key">
+      </div>
+      <div>
+        <div class="form-label">Akcije</div>
+        <div class="btn-row">
+          <button class="btn btn-secondary btn-sm" onclick="saveEtfApiKey()">Spremi ključ</button>
+          <button class="btn btn-primary btn-sm" onclick="refreshEtfData()">Osvježi EOD</button>
+        </div>
+      </div>
+    </div>
+    <div class="mono text-dim" style="font-size:12px" id="etfProviderNote"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Nacionalni ETF-ovi (US + UCITS/slični)</div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>ETF</th><th>Ticker</th><th>Država / UCITS</th><th>Cijena</th><th>1D</th><th>1W</th><th>1M</th><th>YTD</th><th>1Y</th><th>Watch</th>
+          </tr>
+        </thead>
+        <tbody id="etfCountryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tematski ETF-ovi</div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Tema</th><th>ETF</th><th>Ticker</th><th>Cijena</th><th>1D</th><th>1W</th><th>1M</th><th>YTD</th><th>1Y</th><th>Watch</th>
+          </tr>
+        </thead>
+        <tbody id="etfThemeBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Moja lokalna watchlista</div>
+    <div id="etfWatchlist" class="mono" style="font-size:13px;color:var(--text-dim)">Nema odabranih ETF-ova.</div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- TAB: UPUTE                                              -->
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -1819,6 +1881,59 @@ const STORAGE_KEYS = {
   sektori: 'sektorRotacija_v2',
   industrije: 'indRotacija_v1'
 };
+
+
+const ETF_PROVIDERS = {
+  yahoo: { name: 'Yahoo Finance (unofficial)', keyName: 'etf_yahoo_key', needsKey: false, note: 'Brz za prototip, ali ne službeni API.' },
+  alphavantage: { name: 'Alpha Vantage', keyName: 'etf_alpha_key', needsKey: true, note: 'Free key: https://www.alphavantage.co/support/#api-key' },
+  twelvedata: { name: 'Twelve Data', keyName: 'etf_twelve_key', needsKey: true, note: 'Free key: https://twelvedata.com/' }
+};
+
+const ETF_COUNTRY_LIST = [
+  { name:'S&P 500 ETF', ticker:'SPY', country:'SAD (UCITS: CSPX/VUSA)' },
+  { name:'Nasdaq-100 ETF', ticker:'QQQ', country:'SAD (UCITS: EQQQ/CNDX)' },
+  { name:'Germany ETF', ticker:'EWG', country:'Njemačka (UCITS: EXS1)' },
+  { name:'Japan ETF', ticker:'EWJ', country:'Japan (UCITS: IJPA)' },
+  { name:'UK ETF', ticker:'EWU', country:'UK (UCITS: IUKD)' },
+  { name:'France ETF', ticker:'EWQ', country:'Francuska (UCITS: CACX)' },
+  { name:'India ETF', ticker:'INDA', country:'Indija (UCITS: NDIA)' },
+  { name:'Brazil ETF', ticker:'EWZ', country:'Brazil (UCITS: IBZL)' },
+  { name:'Canada ETF', ticker:'EWC', country:'Kanada (UCITS: CUKX)' },
+  { name:'Mexico ETF', ticker:'EWW', country:'Meksiko (UCITS: XMEX)' },
+  { name:'South Korea ETF', ticker:'EWY', country:'J. Koreja (UCITS: IKOR)' },
+  { name:'Australia ETF', ticker:'EWA', country:'Australija (UCITS: SAUS)' },
+  { name:'Switzerland ETF', ticker:'EWL', country:'Švicarska (UCITS: SW2CHB)' },
+  { name:'Spain ETF', ticker:'EWP', country:'Španjolska (UCITS: CSX5)' },
+  { name:'Italy ETF', ticker:'EWI', country:'Italija (UCITS: IMIB)' },
+  { name:'Netherlands ETF', ticker:'EWN', country:'Nizozemska (UCITS: AEXA)' },
+  { name:'Sweden ETF', ticker:'EWD', country:'Švedska (UCITS: IQQS)' },
+  { name:'Taiwan ETF', ticker:'EWT', country:'Tajvan (UCITS: ITWN)' },
+  { name:'Singapore ETF', ticker:'EWS', country:'Singapur (UCITS: ISGN)' },
+  { name:'South Africa ETF', ticker:'EZA', country:'JAR (UCITS: IZAP)' }
+];
+
+const ETF_THEME_LIST = [
+  { theme:'AI / Robotics', name:'Global X Robotics & AI', ticker:'BOTZ' },
+  { theme:'AI / Robotics', name:'ROBO Global Robotics', ticker:'ROBO' },
+  { theme:'Clean Energy', name:'iShares Global Clean Energy', ticker:'ICLN' },
+  { theme:'Solar', name:'Invesco Solar', ticker:'TAN' },
+  { theme:'Cybersecurity', name:'First Trust Nasdaq Cybersecurity', ticker:'CIBR' },
+  { theme:'Cybersecurity', name:'ETFMG Prime Cyber Security', ticker:'HACK' },
+  { theme:'Semiconductors', name:'iShares Semiconductor', ticker:'SOXX' },
+  { theme:'Semiconductors', name:'VanEck Semiconductor', ticker:'SMH' },
+  { theme:'Cloud', name:'First Trust Cloud Computing', ticker:'SKYY' },
+  { theme:'Blockchain', name:'Amplify Transformational Data Sharing', ticker:'BLOK' },
+  { theme:'Genomics', name:'ARK Genomic Revolution', ticker:'ARKG' },
+  { theme:'Fintech', name:'Global X FinTech', ticker:'FINX' },
+  { theme:'Uranium', name:'Global X Uranium', ticker:'URA' },
+  { theme:'Lithium/Batteries', name:'Global X Lithium & Battery Tech', ticker:'LIT' },
+  { theme:'Defense', name:'iShares U.S. Aerospace & Defense', ticker:'ITA' },
+  { theme:'Infrastructure', name:'Global X U.S. Infrastructure', ticker:'PAVE' },
+  { theme:'Healthcare Innovation', name:'ARK Innovation', ticker:'ARKK' },
+  { theme:'Biotech', name:'SPDR S&P Biotech', ticker:'XBI' },
+  { theme:'Water', name:'Invesco Water Resources', ticker:'PHO' },
+  { theme:'Commodities', name:'Invesco DB Commodity Index Tracking', ticker:'DBC' }
+];
 
 const AI_PROVIDERS = {
   groq: {
@@ -2189,6 +2304,7 @@ function init() {
   if (dsSel) dsSel.value = downturnScoreMode;
   updateWizardModelSelect();
   updateAiChatModel();
+  initEtfTracker();
 }
 
 function updateClock() {
@@ -5546,6 +5662,167 @@ function cdSaveKey() {
   }
 }
 
+
+
+// ═══════════════════════════════════════════════════════
+// ETF TRACKER
+// ═══════════════════════════════════════════════════════
+function initEtfTracker() {
+  const sel = document.getElementById('etfProvider');
+  if (!sel) return;
+  sel.innerHTML = Object.entries(ETF_PROVIDERS).map(([k,v]) => `<option value="${k}">${v.name}</option>`).join('');
+  const defaultProvider = localStorage.getItem('etf_provider') || 'yahoo';
+  sel.value = ETF_PROVIDERS[defaultProvider] ? defaultProvider : 'yahoo';
+  onEtfProviderChange();
+  renderEtfTables();
+}
+
+function onEtfProviderChange() {
+  const provider = document.getElementById('etfProvider')?.value || 'yahoo';
+  localStorage.setItem('etf_provider', provider);
+  const cfg = ETF_PROVIDERS[provider];
+  document.getElementById('etfProviderNote').textContent = `${cfg.note} ${cfg.needsKey ? 'Provider traži API key.' : 'API key nije potreban.'}`;
+  document.getElementById('etfApiKey').value = localStorage.getItem(cfg.keyName) || '';
+}
+
+function saveEtfApiKey() {
+  const provider = document.getElementById('etfProvider')?.value || 'yahoo';
+  const cfg = ETF_PROVIDERS[provider];
+  const val = document.getElementById('etfApiKey')?.value?.trim();
+  if (val) localStorage.setItem(cfg.keyName, val);
+  else localStorage.removeItem(cfg.keyName);
+  showToast(`Spremljen ključ za ${cfg.name}`);
+}
+
+function getEtfWatchlist() {
+  try { return JSON.parse(localStorage.getItem('etf_watchlist') || '[]'); } catch(e) { return []; }
+}
+
+function toggleEtfWatch(ticker) {
+  const set = new Set(getEtfWatchlist());
+  if (set.has(ticker)) set.delete(ticker);
+  else set.add(ticker);
+  localStorage.setItem('etf_watchlist', JSON.stringify([...set]));
+  renderEtfTables();
+}
+
+function renderEtfWatchlist() {
+  const list = getEtfWatchlist();
+  const el = document.getElementById('etfWatchlist');
+  el.textContent = list.length ? list.join(', ') : 'Nema odabranih ETF-ova.';
+}
+
+function colorClass(v) {
+  if (v == null || Number.isNaN(v)) return 'val-zero';
+  if (v >= 3) return 'val-pos2';
+  if (v > 0) return 'val-pos1';
+  if (v <= -3) return 'val-neg2';
+  if (v < 0) return 'val-neg1';
+  return 'val-zero';
+}
+
+function fmtPct(v) { return v == null || Number.isNaN(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`; }
+
+function calcEtfPerf(series) {
+  if (!series || series.length < 3) return null;
+  const byDate = [...series].sort((a,b) => a.date.localeCompare(b.date));
+  const last = byDate[byDate.length - 1].close;
+  const prev = byDate[byDate.length - 2].close;
+  const pick = days => byDate[Math.max(0, byDate.length - days - 1)]?.close;
+  const startY = byDate.find(p => p.date >= `${new Date().getFullYear()}-01-01`)?.close || byDate[0].close;
+  const ret = base => base ? ((last - base) / base) * 100 : null;
+  return {
+    price: last,
+    d1: ret(prev),
+    w1: ret(pick(5)),
+    m1: ret(pick(21)),
+    ytd: ret(startY),
+    y1: ret(pick(252))
+  };
+}
+
+async function fetchEtfSeries(ticker) {
+  const provider = localStorage.getItem('etf_provider') || 'yahoo';
+  if (provider === 'alphavantage') {
+    const key = localStorage.getItem(ETF_PROVIDERS.alphavantage.keyName);
+    if (!key) throw new Error('Nedostaje Alpha Vantage key');
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(ticker)}&outputsize=full&apikey=${encodeURIComponent(key)}`;
+    const data = await (await fetch(url)).json();
+    const ts = data['Time Series (Daily)'];
+    if (!ts) throw new Error('Alpha Vantage limit/error');
+    return Object.entries(ts).map(([date, row]) => ({ date, close: parseFloat(row['4. close']) })).filter(r => !Number.isNaN(r.close));
+  }
+  if (provider === 'twelvedata') {
+    const key = localStorage.getItem(ETF_PROVIDERS.twelvedata.keyName);
+    if (!key) throw new Error('Nedostaje Twelve Data key');
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=500&apikey=${encodeURIComponent(key)}`;
+    const data = await (await fetch(url)).json();
+    if (!data.values) throw new Error(data.message || 'Twelve Data error');
+    return data.values.map(r => ({ date: r.datetime.slice(0,10), close: parseFloat(r.close) })).filter(r => !Number.isNaN(r.close));
+  }
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1y&interval=1d`;
+  const data = await (await fetch(url)).json();
+  const res = data?.chart?.result?.[0];
+  if (!res?.timestamp?.length) throw new Error('Yahoo error/CORS');
+  const close = res.indicators?.quote?.[0]?.close || [];
+  return res.timestamp.map((t, i) => ({ date: new Date(t*1000).toISOString().slice(0,10), close: close[i] })).filter(r => Number.isFinite(r.close));
+}
+
+async function refreshEtfData() {
+  const universe = [...ETF_COUNTRY_LIST, ...ETF_THEME_LIST];
+  const cache = {};
+  let ok = 0, fail = 0;
+  for (const item of universe) {
+    try {
+      const series = await fetchEtfSeries(item.ticker);
+      cache[item.ticker] = calcEtfPerf(series);
+      ok++;
+    } catch (e) {
+      cache[item.ticker] = null;
+      fail++;
+    }
+  }
+  localStorage.setItem('etf_perf_cache', JSON.stringify({ ts: Date.now(), data: cache }));
+  renderEtfTables();
+  showToast(`ETF osvježeno: ${ok} OK, ${fail} grešaka${fail ? ' (provjeri provider/key/CORS)' : ''}`, fail > 0);
+}
+
+function getEtfCache() {
+  try { return JSON.parse(localStorage.getItem('etf_perf_cache') || '{}').data || {}; } catch(e) { return {}; }
+}
+
+function renderEtfTables() {
+  const watch = new Set(getEtfWatchlist());
+  const cache = getEtfCache();
+  const cb = document.getElementById('etfCountryBody');
+  const tb = document.getElementById('etfThemeBody');
+  if (!cb || !tb) return;
+
+  cb.innerHTML = ETF_COUNTRY_LIST.map(item => {
+    const p = cache[item.ticker] || {};
+    return `<tr>
+      <td>${item.name}</td><td>${item.ticker}</td><td>${item.country}</td><td>${p.price ? p.price.toFixed(2) : '—'}</td>
+      <td class="${colorClass(p.d1)}">${fmtPct(p.d1)}</td><td class="${colorClass(p.w1)}">${fmtPct(p.w1)}</td>
+      <td class="${colorClass(p.m1)}">${fmtPct(p.m1)}</td><td class="${colorClass(p.ytd)}">${fmtPct(p.ytd)}</td>
+      <td class="${colorClass(p.y1)}">${fmtPct(p.y1)}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleEtfWatch('${item.ticker}')">${watch.has(item.ticker) ? '★' : '☆'}</button></td>
+    </tr>`;
+  }).join('');
+
+  tb.innerHTML = ETF_THEME_LIST.map(item => {
+    const p = cache[item.ticker] || {};
+    return `<tr>
+      <td>${item.theme}</td><td>${item.name}</td><td>${item.ticker}</td><td>${p.price ? p.price.toFixed(2) : '—'}</td>
+      <td class="${colorClass(p.d1)}">${fmtPct(p.d1)}</td><td class="${colorClass(p.w1)}">${fmtPct(p.w1)}</td>
+      <td class="${colorClass(p.m1)}">${fmtPct(p.m1)}</td><td class="${colorClass(p.ytd)}">${fmtPct(p.ytd)}</td>
+      <td class="${colorClass(p.y1)}">${fmtPct(p.y1)}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleEtfWatch('${item.ticker}')">${watch.has(item.ticker) ? '★' : '☆'}</button></td>
+    </tr>`;
+  }).join('');
+
+  renderEtfWatchlist();
+}
+
 // ═══════════════════════════════════════════════════════
 // TAB NAVIGATION
 // ═══════════════════════════════════════════════════════
@@ -5563,6 +5840,7 @@ function showTab(tab) {
   if (tab === 'yoy') { populateYoYSelects(); renderYoY(); }
   if (tab === 'povijest') { renderHistory(); }
   if (tab === 'ciklus') { initCycleDetectorTab(); }
+  if (tab === 'etf') { renderEtfTables(); }
 }
 
 // ═══════════════════════════════════════════════════════
