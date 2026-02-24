@@ -974,6 +974,7 @@
   <button class="nav-btn" onclick="showTab('povijest')">[ Povijest ]</button>
   <button class="nav-btn" onclick="showTab('ai')" style="color:var(--purple)">[ ◆ AI Asistent ]</button>
   <button class="nav-btn" onclick="showTab('ciklus')" style="color:var(--cyan)">[ 🔄 Cycle Detector ]</button>
+  <button class="nav-btn" onclick="showTab('etf')" style="color:var(--green)">[ 📈 ETF Tracker ]</button>
   <button class="nav-btn" onclick="showTab('upute')">[ Upute ]</button>
 </nav>
 
@@ -1717,6 +1718,112 @@
   </div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB: ETF TRACKER                                       -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div id="tab-etf" class="tab-panel">
+  <div class="stats-row" style="grid-template-columns:repeat(4,1fr)" id="etfStatsRow">
+    <div class="stat-card"><div class="stat-value" id="etfStTotal">—</div><div class="stat-label">ETF-ova</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--green)" id="etfStS2">—</div><div class="stat-label">Stage 2</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--red)" id="etfStS4">—</div><div class="stat-label">Stage 4</div></div>
+    <div class="stat-card"><div class="stat-value" id="etfStCache">—</div><div class="stat-label">Cache starost</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">ETF Tracker – Massive proxy + realtime</div>
+    <div class="form-header" style="grid-template-columns: 220px 1fr 220px;">
+      <div>
+        <div class="form-label">Provider</div>
+        <select id="etfProvider" onchange="onEtfProviderChange()"></select>
+      </div>
+      <div>
+        <div class="form-label">Polygon / Massive API key</div>
+        <input type="password" id="etfApiKey" placeholder="Upiši Massive/Polygon API key">
+      </div>
+      <div>
+        <div class="form-label">Akcije</div>
+        <div class="btn-row">
+          <button class="btn btn-secondary btn-sm" onclick="saveEtfApiKey()">Spremi ključ</button>
+          <button class="btn btn-primary btn-sm" id="etfRefreshBtn" onclick="refreshEtfData()">Osvježi EOD</button>
+          <button class="btn btn-secondary btn-sm" onclick="startEtfRealtime()">▶ RT</button>
+          <button class="btn btn-secondary btn-sm" onclick="stopEtfRealtime()">■ Stop</button>
+        </div>
+      </div>
+    </div>
+    <div class="mono text-dim" style="font-size:12px" id="etfProviderNote"></div>
+    <div class="mono" style="font-size:11px;margin-top:6px;color:var(--text-dim)" id="etfFetchStatus"></div>
+    <div class="mono" style="font-size:11px;margin-top:6px;color:var(--text-dim)" id="etfBackendStatus"></div>
+    <div style="margin-top:6px;display:flex;align-items:center;gap:8px" class="mono">
+      <span style="font-size:11px;color:var(--text-dim)">RT interval (sec):</span>
+      <input type="number" id="etfRtSec" min="5" step="5" value="15" style="width:80px;display:inline-block;padding:2px 6px">
+      <span id="etfRtStatus" style="font-size:11px;color:var(--text-dim)">RT: OFF</span>
+    </div>
+    <div id="etfProgressWrap" style="display:none;margin-top:8px">
+      <div style="height:4px;background:var(--border);border-radius:3px;overflow:hidden"><div id="etfProgressFill" style="height:100%;width:0;background:linear-gradient(90deg,var(--amber),var(--green))"></div></div>
+      <div id="etfProgressTxt" class="mono" style="font-size:10px;color:var(--text-dim);margin-top:4px">0/0</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">ETF filteri</div>
+    <div class="period-tabs" id="etfFilterTabs">
+      <button class="period-tab active" data-filter="all" onclick="setEtfFilter('all', this)">Svi</button>
+      <button class="period-tab" data-filter="s2" onclick="setEtfFilter('s2', this)">Stage 2</button>
+      <button class="period-tab" data-filter="s3" onclick="setEtfFilter('s3', this)">Stage 3</button>
+      <button class="period-tab" data-filter="s4" onclick="setEtfFilter('s4', this)">Stage 4</button>
+      <button class="period-tab" data-filter="aboveMa200" onclick="setEtfFilter('aboveMa200', this)">Iznad MA200</button>
+      <button class="period-tab" data-filter="oversold" onclick="setEtfFilter('oversold', this)">RSI ≤ 30</button>
+      <button class="period-tab" data-filter="watch" onclick="setEtfFilter('watch', this)">Watch</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Automatski scanner</div>
+    <div id="etfScannerGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Nacionalni ETF-ovi</div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left" onclick="setEtfSort('name')">ETF</th><th onclick="setEtfSort('ticker')">Ticker</th><th style="text-align:left">Država / UCITS</th><th onclick="setEtfSort('price')">Cijena</th><th onclick="setEtfSort('stage')">Stage</th><th onclick="setEtfSort('rsi')">RSI</th><th onclick="setEtfSort('d1')">1D</th><th onclick="setEtfSort('w1')">1W</th><th onclick="setEtfSort('m1')">1M</th><th onclick="setEtfSort('ytd')">YTD</th><th onclick="setEtfSort('y1')">1Y</th><th>Watch</th>
+          </tr>
+        </thead>
+        <tbody id="etfCountryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Tematski ETF-ovi</div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Tema</th><th style="text-align:left" onclick="setEtfSort('name')">ETF</th><th onclick="setEtfSort('ticker')">Ticker</th><th onclick="setEtfSort('price')">Cijena</th><th onclick="setEtfSort('stage')">Stage</th><th onclick="setEtfSort('rsi')">RSI</th><th onclick="setEtfSort('d1')">1D</th><th onclick="setEtfSort('w1')">1W</th><th onclick="setEtfSort('m1')">1M</th><th onclick="setEtfSort('ytd')">YTD</th><th onclick="setEtfSort('y1')">1Y</th><th>Watch</th>
+          </tr>
+        </thead>
+        <tbody id="etfThemeBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Moja lokalna watchlista</div>
+    <div id="etfWatchlist" class="mono" style="font-size:13px;color:var(--text-dim)">Nema odabranih ETF-ova.</div>
+  </div>
+
+  <div id="etfModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:999;align-items:center;justify-content:center;padding:20px" onclick="if(event.target.id==='etfModal')closeEtfModal()">
+    <div style="background:var(--bg2);border:1px solid var(--border);padding:20px;border-radius:8px;max-width:720px;width:100%;max-height:92vh;overflow:auto;position:relative">
+      <button class="btn btn-secondary btn-sm" style="position:absolute;right:12px;top:12px" onclick="closeEtfModal()">✕</button>
+      <div id="etfModalContent"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- TAB: UPUTE                                              -->
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -1819,6 +1926,81 @@ const STORAGE_KEYS = {
   sektori: 'sektorRotacija_v2',
   industrije: 'indRotacija_v1'
 };
+
+
+const ETF_PROVIDERS = {
+  stooq: { name: 'Stooq CSV (fallback-first)', keyName: 'etf_stooq_key', needsKey: false, note: 'Najstabilnije za browser bez API ključa (EOD).' },
+  yahoo: { name: 'Yahoo Finance (unofficial)', keyName: 'etf_yahoo_key', needsKey: false, note: 'Brz za prototip, ali može pasti zbog CORS-a.' },
+  alphavantage: { name: 'Alpha Vantage', keyName: 'etf_alpha_key', needsKey: true, note: 'Free key: https://www.alphavantage.co/support/#api-key' },
+  twelvedata: { name: 'Twelve Data', keyName: 'etf_twelve_key', needsKey: true, note: 'Free key: https://twelvedata.com/' },
+  massive: { name: 'Massive (Polygon)', keyName: 'etf_massive_key', needsKey: true, note: 'Free key: https://massive.com/docs/rest/quickstart#making-your-first-api-request' }
+};
+
+const ETF_COUNTRY_LIST = [
+  { name:'S&P 500 ETF', ticker:'SPY', country:'SAD (UCITS: CSPX/VUSA)' },
+  { name:'Nasdaq-100 ETF', ticker:'QQQ', country:'SAD (UCITS: EQQQ/CNDX)' },
+  { name:'Germany ETF', ticker:'EWG', country:'Njemačka (UCITS: EXS1)' },
+  { name:'Japan ETF', ticker:'EWJ', country:'Japan (UCITS: IJPA)' },
+  { name:'UK ETF', ticker:'EWU', country:'UK (UCITS: IUKD)' },
+  { name:'France ETF', ticker:'EWQ', country:'Francuska (UCITS: CACX)' },
+  { name:'India ETF', ticker:'INDA', country:'Indija (UCITS: NDIA)' },
+  { name:'Brazil ETF', ticker:'EWZ', country:'Brazil (UCITS: IBZL)' },
+  { name:'Canada ETF', ticker:'EWC', country:'Kanada (UCITS: CUKX)' },
+  { name:'Mexico ETF', ticker:'EWW', country:'Meksiko (UCITS: XMEX)' },
+  { name:'South Korea ETF', ticker:'EWY', country:'J. Koreja (UCITS: IKOR)' },
+  { name:'Australia ETF', ticker:'EWA', country:'Australija (UCITS: SAUS)' },
+  { name:'Switzerland ETF', ticker:'EWL', country:'Švicarska (UCITS: SW2CHB)' },
+  { name:'Spain ETF', ticker:'EWP', country:'Španjolska (UCITS: CSX5)' },
+  { name:'Italy ETF', ticker:'EWI', country:'Italija (UCITS: IMIB)' },
+  { name:'Netherlands ETF', ticker:'EWN', country:'Nizozemska (UCITS: AEXA)' },
+  { name:'Sweden ETF', ticker:'EWD', country:'Švedska (UCITS: IQQS)' },
+  { name:'Taiwan ETF', ticker:'EWT', country:'Tajvan (UCITS: ITWN)' },
+  { name:'Singapore ETF', ticker:'EWS', country:'Singapur (UCITS: ISGN)' },
+  { name:'South Africa ETF', ticker:'EZA', country:'JAR (UCITS: IZAP)' },
+{ name:'China ETF', ticker:'MCHI', country:'Kina (UCITS: ICHN)' },
+  { name:'Hong Kong ETF', ticker:'EWH', country:'Hong Kong (UCITS: IHKD)' },
+  { name:'Israel ETF', ticker:'EIS', country:'Izrael (UCITS: ISRL)' },
+  { name:'Poland ETF', ticker:'EPOL', country:'Poljska (UCITS: IPOL)' },
+  { name:'Turkey ETF', ticker:'TUR', country:'Turska (UCITS: ITKY)' },
+  { name:'Indonesia ETF', ticker:'EIDO', country:'Indonezija (UCITS: IIND)' },
+  { name:'Vietnam ETF', ticker:'VNM', country:'Vijetnam (UCITS: VUCP)' },
+  { name:'Saudi Arabia ETF', ticker:'KSA', country:'Saudijska Arabija (UCITS: ISAU)' },
+  { name:'UAE ETF', ticker:'UAE', country:'UAE (UCITS: IUAE)' },
+  { name:'Argentina ETF', ticker:'ARGT', country:'Argentina (UCITS: ARGT-sličan)' }
+];
+
+const ETF_THEME_LIST = [
+  { theme:'AI / Robotics', name:'Global X Robotics & AI', ticker:'BOTZ' },
+  { theme:'AI / Robotics', name:'ROBO Global Robotics', ticker:'ROBO' },
+  { theme:'Clean Energy', name:'iShares Global Clean Energy', ticker:'ICLN' },
+  { theme:'Solar', name:'Invesco Solar', ticker:'TAN' },
+  { theme:'Cybersecurity', name:'First Trust Nasdaq Cybersecurity', ticker:'CIBR' },
+  { theme:'Cybersecurity', name:'ETFMG Prime Cyber Security', ticker:'HACK' },
+  { theme:'Semiconductors', name:'iShares Semiconductor', ticker:'SOXX' },
+  { theme:'Semiconductors', name:'VanEck Semiconductor', ticker:'SMH' },
+  { theme:'Cloud', name:'First Trust Cloud Computing', ticker:'SKYY' },
+  { theme:'Blockchain', name:'Amplify Transformational Data Sharing', ticker:'BLOK' },
+  { theme:'Genomics', name:'ARK Genomic Revolution', ticker:'ARKG' },
+  { theme:'Fintech', name:'Global X FinTech', ticker:'FINX' },
+  { theme:'Uranium', name:'Global X Uranium', ticker:'URA' },
+  { theme:'Lithium/Batteries', name:'Global X Lithium & Battery Tech', ticker:'LIT' },
+  { theme:'Defense', name:'iShares U.S. Aerospace & Defense', ticker:'ITA' },
+  { theme:'Infrastructure', name:'Global X U.S. Infrastructure', ticker:'PAVE' },
+  { theme:'Healthcare Innovation', name:'ARK Innovation', ticker:'ARKK' },
+  { theme:'Biotech', name:'SPDR S&P Biotech', ticker:'XBI' },
+  { theme:'Water', name:'Invesco Water Resources', ticker:'PHO' },
+  { theme:'Commodities', name:'Invesco DB Commodity Index Tracking', ticker:'DBC' },
+{ theme:'Nasdaq Growth', name:'Invesco QQQ Trust', ticker:'QQQ' },
+  { theme:'S&P Momentum', name:'iShares MSCI USA Momentum Factor', ticker:'MTUM' },
+  { theme:'Quality', name:'iShares MSCI USA Quality Factor', ticker:'QUAL' },
+  { theme:'Dividend Growth', name:'Vanguard Dividend Appreciation', ticker:'VIG' },
+  { theme:'High Dividend', name:'Schwab U.S. Dividend Equity', ticker:'SCHD' },
+  { theme:'Low Volatility', name:'Invesco S&P 500 Low Volatility', ticker:'SPLV' },
+  { theme:'Value', name:'Vanguard Value ETF', ticker:'VTV' },
+  { theme:'Growth', name:'Vanguard Growth ETF', ticker:'VUG' },
+  { theme:'Gold Miners', name:'VanEck Gold Miners', ticker:'GDX' },
+  { theme:'Silver Miners', name:'Global X Silver Miners', ticker:'SIL' }
+];
 
 const AI_PROVIDERS = {
   groq: {
@@ -2189,6 +2371,7 @@ function init() {
   if (dsSel) dsSel.value = downturnScoreMode;
   updateWizardModelSelect();
   updateAiChatModel();
+  initEtfTracker();
 }
 
 function updateClock() {
@@ -4239,7 +4422,7 @@ async function cdFetchFRED(seriesId) {
     const res = await tryFetch(csvUrl);
     if (res) {
       const csv = await res.text();
-      const lines = csv.trim().split('\n').slice(1);
+      const lines = csv.trim().split(/\r?\n/).slice(1);
       const data = [];
       for (const line of lines) {
         const [date, val] = line.split(',');
@@ -5546,6 +5729,334 @@ function cdSaveKey() {
   }
 }
 
+
+
+// ═══════════════════════════════════════════════════════
+// ETF TRACKER
+// ═══════════════════════════════════════════════════════
+let etfRealtimeTimer = null;
+function initEtfTracker() {
+  const sel = document.getElementById('etfProvider');
+  if (!sel) return;
+  sel.innerHTML = Object.entries(ETF_PROVIDERS).map(([k,v]) => `<option value="${k}">${v.name}</option>`).join('');
+  const defaultProvider = localStorage.getItem('etf_provider') || 'massive';
+  sel.value = ETF_PROVIDERS[defaultProvider] ? defaultProvider : 'massive';
+  onEtfProviderChange();
+  renderEtfTables();
+  const hasCache = Object.keys(getEtfCache()).length > 0;
+  if (!hasCache) refreshEtfData();
+}
+
+function onEtfProviderChange() {
+  const provider = document.getElementById('etfProvider')?.value || 'massive';
+  localStorage.setItem('etf_provider', provider);
+  const cfg = ETF_PROVIDERS[provider];
+  document.getElementById('etfProviderNote').textContent = `${cfg.note} ${cfg.needsKey ? 'Provider traži API key.' : 'API key nije potreban.'}`;
+  document.getElementById('etfApiKey').value = localStorage.getItem(cfg.keyName) || '';
+}
+
+function saveEtfApiKey() {
+  const provider = document.getElementById('etfProvider')?.value || 'massive';
+  const cfg = ETF_PROVIDERS[provider];
+  const val = document.getElementById('etfApiKey')?.value?.trim();
+  if (val) localStorage.setItem(cfg.keyName, val);
+  else localStorage.removeItem(cfg.keyName);
+  showToast(`Spremljen ključ za ${cfg.name}`);
+}
+
+function getEtfWatchlist() {
+  try { return JSON.parse(localStorage.getItem('etf_watchlist') || '[]'); } catch(e) { return []; }
+}
+
+function toggleEtfWatch(ticker) {
+  const set = new Set(getEtfWatchlist());
+  if (set.has(ticker)) set.delete(ticker);
+  else set.add(ticker);
+  localStorage.setItem('etf_watchlist', JSON.stringify([...set]));
+  renderEtfTables();
+}
+
+function renderEtfWatchlist() {
+  const list = getEtfWatchlist();
+  const el = document.getElementById('etfWatchlist');
+  el.textContent = list.length ? list.join(', ') : 'Nema odabranih ETF-ova.';
+}
+
+function colorClass(v) {
+  if (v == null || Number.isNaN(v)) return 'val-zero';
+  if (v >= 3) return 'val-pos2';
+  if (v > 0) return 'val-pos1';
+  if (v <= -3) return 'val-neg2';
+  if (v < 0) return 'val-neg1';
+  return 'val-zero';
+}
+
+function fmtPct(v) { return v == null || Number.isNaN(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`; }
+
+function calcEtfPerf(series) {
+  if (!series || series.length < 60) return null;
+  const byDate = [...series].sort((a,b) => a.date.localeCompare(b.date));
+  const last = byDate[byDate.length - 1].close;
+  const prev = byDate[byDate.length - 2]?.close;
+  const pick = days => byDate[Math.max(0, byDate.length - days - 1)]?.close;
+  const startY = byDate.find(p => p.date >= `${new Date().getFullYear()}-01-01`)?.close || byDate[0].close;
+  const ma = days => {
+    const seg = byDate.slice(Math.max(0, byDate.length - days));
+    if (!seg.length) return null;
+    return seg.reduce((a,b)=>a+b.close,0)/seg.length;
+  };
+  const maPrev = (days, offset=5) => {
+    const end = Math.max(0, byDate.length - offset);
+    const start = Math.max(0, end - days);
+    const seg = byDate.slice(start, end);
+    if (!seg.length) return null;
+    return seg.reduce((a,b)=>a+b.close,0)/seg.length;
+  };
+  const ret = base => base ? ((last - base) / base) * 100 : null;
+
+  const ma50 = ma(50);
+  const ma150 = ma(150);
+  const ma150Prev = maPrev(150, 10);
+  const slope150 = (ma150 && ma150Prev) ? ((ma150 - ma150Prev) / ma150Prev) * 100 : null;
+  const trend = ma50 && ma150 ? (ma50 > ma150 ? 'Uzlazni' : 'Silazni') : 'Neutralan';
+
+  let stage = 'Stage 1 (Baza)';
+  if (ma150 && slope150 != null) {
+    if (last > ma150 && slope150 > 0.2) stage = 'Stage 2 (Uzlazni)';
+    else if (last < ma150 && slope150 < -0.2) stage = 'Stage 4 (Silazni)';
+    else if (last < ma150 && slope150 >= -0.2) stage = 'Stage 3 (Top)';
+  }
+
+  return {
+    price: last,
+    d1: ret(prev),
+    w1: ret(pick(5)),
+    m1: ret(pick(21)),
+    ytd: ret(startY),
+    y1: ret(pick(252)),
+    ma50, ma150, slope150,
+    trend,
+    weinsteinStage: stage
+  };
+}
+
+async function massiveApiRequest(path, params = {}) {
+  const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
+  if (!key) throw new Error('Nedostaje Massive key');
+  const query = new URLSearchParams({ ...params, apiKey: key }).toString();
+  const bases = ['https://api.polygon.io', 'https://api.massive.com'];
+  let lastErr = null;
+  for (const base of bases) {
+    const url = `${base}${path}?${query}`;
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const txt = await res.text();
+      let data = {};
+      try { data = JSON.parse(txt); } catch(e) { data = { raw: txt }; }
+      if (!res.ok) throw new Error(data?.error || data?.message || `${res.status} ${res.statusText}`);
+      return data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Massive endpoint nedostupan');
+}
+
+async function fetchEtfSeriesFromProvider(ticker, provider) {
+  if (provider === 'alphavantage') {
+    const key = localStorage.getItem(ETF_PROVIDERS.alphavantage.keyName);
+    if (!key) throw new Error('Nedostaje Alpha Vantage key');
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(ticker)}&outputsize=full&apikey=${encodeURIComponent(key)}`;
+    const data = await (await fetch(url)).json();
+    const ts = data['Time Series (Daily)'];
+    if (!ts) throw new Error('Alpha Vantage limit/error');
+    return Object.entries(ts).map(([date, row]) => ({ date, close: parseFloat(row['4. close']) })).filter(r => !Number.isNaN(r.close));
+  }
+
+  if (provider === 'twelvedata') {
+    const key = localStorage.getItem(ETF_PROVIDERS.twelvedata.keyName);
+    if (!key) throw new Error('Nedostaje Twelve Data key');
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=5000&apikey=${encodeURIComponent(key)}`;
+    const data = await (await fetch(url)).json();
+    if (!data.values) throw new Error(data.message || 'Twelve Data error');
+    return data.values.map(r => ({ date: r.datetime.slice(0,10), close: parseFloat(r.close) })).filter(r => !Number.isNaN(r.close));
+  }
+
+  if (provider === 'massive') {
+    const to = new Date();
+    const from = new Date();
+    from.setFullYear(to.getFullYear() - 3);
+    const f = from.toISOString().slice(0,10);
+    const t = to.toISOString().slice(0,10);
+    const data = await massiveApiRequest(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${f}/${t}`, {
+      adjusted: 'true',
+      sort: 'asc',
+      limit: '50000'
+    });
+    if (!Array.isArray(data?.results) || !data.results.length) throw new Error(data?.error || data?.message || 'Massive: nema results');
+    return data.results.map(r => ({
+      date: new Date(r.t).toISOString().slice(0,10),
+      close: parseFloat(r.c)
+    })).filter(r => r.date && Number.isFinite(r.close));
+  }
+
+  if (provider === 'yahoo') {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=3y&interval=1d`;
+    const data = await (await fetch(url)).json();
+    const res = data?.chart?.result?.[0];
+    if (!res?.timestamp?.length) throw new Error('Yahoo error/CORS');
+    const close = res.indicators?.quote?.[0]?.close || [];
+    return res.timestamp.map((t, i) => ({ date: new Date(t*1000).toISOString().slice(0,10), close: close[i] })).filter(r => Number.isFinite(r.close));
+  }
+
+  const stooqSymbol = `${ticker.toLowerCase()}.us`;
+  const stooqUrl = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSymbol)}&i=d`;
+  const csv = await (await fetch(stooqUrl)).text();
+  if (!csv || csv.startsWith('No data')) throw new Error('Stooq nema podatke');
+  const lines = csv.trim().split(/\r?\n/).slice(1);
+  const rows = lines.map(line => {
+    const [date,,,,close] = line.split(',');
+    return { date, close: parseFloat(close) };
+  }).filter(r => r.date && Number.isFinite(r.close));
+  if (!rows.length) throw new Error('Stooq parse error');
+  return rows;
+}
+
+async function fetchEtfSeries(ticker) {
+  const preferred = localStorage.getItem('etf_provider') || 'stooq';
+  const tries = [preferred, 'massive', 'twelvedata', 'alphavantage', 'yahoo', 'stooq'].filter((v, i, a) => a.indexOf(v) === i);
+  let lastErr = null;
+  for (const p of tries) {
+    try {
+      return await fetchEtfSeriesFromProvider(ticker, p);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Neuspješan dohvat');
+}
+
+async function refreshEtfData() {
+  const universe = [...ETF_COUNTRY_LIST, ...ETF_THEME_LIST];
+  const cache = {};
+  let ok = 0, fail = 0;
+  let s2 = 0, s4 = 0;
+  const failed = [];
+  for (const item of universe) {
+    try {
+      const series = await fetchEtfSeries(item.ticker);
+      cache[item.ticker] = calcEtfPerf(series);
+      if (cache[item.ticker]?.weinsteinStage?.startsWith('Stage 2')) s2++;
+      if (cache[item.ticker]?.weinsteinStage?.startsWith('Stage 4')) s4++;
+      ok++;
+    } catch (e) {
+      cache[item.ticker] = null;
+      fail++;
+      failed.push(`${item.ticker}: ${e?.message || 'greška'}`);
+    }
+  }
+  localStorage.setItem('etf_perf_cache', JSON.stringify({ ts: Date.now(), data: cache }));
+  renderEtfTables();
+  const statusEl = document.getElementById('etfFetchStatus');
+  if (statusEl) statusEl.textContent = fail ? `Greške (${fail}): ${failed.slice(0,8).join(' | ')}` : 'Dohvat uspješan bez grešaka.';
+  showToast(`ETF osvježeno: ${ok} OK, ${fail} grešaka | Stage2: ${s2}, Stage4: ${s4}${fail ? ' (fallback aktivan)' : ''}`, fail > 0);
+}
+
+async function refreshEtfRealtime() {
+  const allTickers = [...new Set([...ETF_COUNTRY_LIST, ...ETF_THEME_LIST].map(x => x.ticker))];
+  const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
+  if (!key) {
+    const rtEl = document.getElementById('etfRtStatus');
+    if (rtEl) rtEl.textContent = 'RT: OFF (nema Massive key)';
+    return;
+  }
+  const chunks = [];
+  for (let i = 0; i < allTickers.length; i += 40) chunks.push(allTickers.slice(i, i + 40));
+  const cache = getEtfCache();
+  let updated = 0;
+  for (const part of chunks) {
+    const data = await massiveApiRequest('/v2/snapshot/locale/us/markets/stocks/tickers', { tickers: part.join(',') });
+    const rows = data?.tickers || [];
+    rows.forEach(r => {
+      const t = r.ticker;
+      const price = r?.day?.c;
+      const prev = r?.prevDay?.c;
+      if (!Number.isFinite(price)) return;
+      if (!cache[t]) cache[t] = {};
+      cache[t].price = price;
+      cache[t].d1 = Number.isFinite(prev) && prev ? ((price - prev) / prev) * 100 : cache[t].d1;
+      updated++;
+    });
+  }
+  localStorage.setItem('etf_perf_cache', JSON.stringify({ ts: Date.now(), data: cache }));
+  renderEtfTables();
+  const st = document.getElementById('etfRtStatus');
+  if (st) st.textContent = `RT: ON | zadnje osvježenje ${new Date().toLocaleTimeString('hr-HR')} | ${updated} tickera`;
+}
+
+function stopEtfRealtime() {
+  if (etfRealtimeTimer) clearInterval(etfRealtimeTimer);
+  etfRealtimeTimer = null;
+  const st = document.getElementById('etfRtStatus');
+  if (st) st.textContent = 'RT: OFF';
+}
+
+function startEtfRealtime() {
+  stopEtfRealtime();
+  const sec = Math.max(5, parseInt(document.getElementById('etfRtSec')?.value || '15', 10));
+  document.getElementById('etfRtSec').value = String(sec);
+  refreshEtfRealtime().catch(() => {
+    const st = document.getElementById('etfRtStatus');
+    if (st) st.textContent = 'RT: ERROR (provjeri Massive key/mrežu)';
+  });
+  etfRealtimeTimer = setInterval(() => {
+    refreshEtfRealtime().catch(() => {
+      const st = document.getElementById('etfRtStatus');
+      if (st) st.textContent = 'RT: ERROR (provjeri Massive key/mrežu)';
+    });
+  }, sec * 1000);
+}
+
+function getEtfCache() {
+  try { return JSON.parse(localStorage.getItem('etf_perf_cache') || '{}').data || {}; } catch(e) { return {}; }
+}
+
+function renderEtfTables() {
+  const watch = new Set(getEtfWatchlist());
+  const cache = getEtfCache();
+  const cb = document.getElementById('etfCountryBody');
+  const tb = document.getElementById('etfThemeBody');
+  if (!cb || !tb) return;
+
+  cb.innerHTML = ETF_COUNTRY_LIST.map(item => {
+    const p = cache[item.ticker] || {};
+    return `<tr>
+      <td>${item.name}</td><td>${item.ticker}</td><td>${item.country}</td><td>${p.price ? p.price.toFixed(2) : '—'}</td>
+      <td class="${p.trend === 'Uzlazni' ? 'val-pos1' : p.trend === 'Silazni' ? 'val-neg1' : 'val-zero'}">${p.trend || '—'}</td>
+      <td class="${(p.weinsteinStage || '').includes('2') ? 'val-pos2' : (p.weinsteinStage || '').includes('4') ? 'val-neg2' : 'val-zero'}">${p.weinsteinStage || '—'}</td>
+      <td class="${colorClass(p.d1)}">${fmtPct(p.d1)}</td><td class="${colorClass(p.w1)}">${fmtPct(p.w1)}</td>
+      <td class="${colorClass(p.m1)}">${fmtPct(p.m1)}</td><td class="${colorClass(p.ytd)}">${fmtPct(p.ytd)}</td>
+      <td class="${colorClass(p.y1)}">${fmtPct(p.y1)}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleEtfWatch('${item.ticker}')">${watch.has(item.ticker) ? '★' : '☆'}</button></td>
+    </tr>`;
+  }).join('');
+
+  tb.innerHTML = ETF_THEME_LIST.map(item => {
+    const p = cache[item.ticker] || {};
+    return `<tr>
+      <td>${item.theme}</td><td>${item.name}</td><td>${item.ticker}</td><td>${p.price ? p.price.toFixed(2) : '—'}</td>
+      <td class="${p.trend === 'Uzlazni' ? 'val-pos1' : p.trend === 'Silazni' ? 'val-neg1' : 'val-zero'}">${p.trend || '—'}</td>
+      <td class="${(p.weinsteinStage || '').includes('2') ? 'val-pos2' : (p.weinsteinStage || '').includes('4') ? 'val-neg2' : 'val-zero'}">${p.weinsteinStage || '—'}</td>
+      <td class="${colorClass(p.d1)}">${fmtPct(p.d1)}</td><td class="${colorClass(p.w1)}">${fmtPct(p.w1)}</td>
+      <td class="${colorClass(p.m1)}">${fmtPct(p.m1)}</td><td class="${colorClass(p.ytd)}">${fmtPct(p.ytd)}</td>
+      <td class="${colorClass(p.y1)}">${fmtPct(p.y1)}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleEtfWatch('${item.ticker}')">${watch.has(item.ticker) ? '★' : '☆'}</button></td>
+    </tr>`;
+  }).join('');
+
+  renderEtfWatchlist();
+}
+
 // ═══════════════════════════════════════════════════════
 // TAB NAVIGATION
 // ═══════════════════════════════════════════════════════
@@ -5563,6 +6074,7 @@ function showTab(tab) {
   if (tab === 'yoy') { populateYoYSelects(); renderYoY(); }
   if (tab === 'povijest') { renderHistory(); }
   if (tab === 'ciklus') { initCycleDetectorTab(); }
+  if (tab === 'etf') { renderEtfTables(); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -5570,5 +6082,6 @@ function showTab(tab) {
 // ═══════════════════════════════════════════════════════
 init();
 </script>
+<script src="etf_tracker.js"></script>
 </body>
 </html>
