@@ -1739,11 +1739,14 @@
         <div class="btn-row">
           <button class="btn btn-secondary btn-sm" onclick="saveEtfApiKey()">Spremi ključ</button>
           <button class="btn btn-primary btn-sm" onclick="refreshEtfData()">Osvježi EOD</button>
+          <button class="btn btn-secondary btn-sm" onclick="startEtfRealtime()">▶ RT start</button>
+          <button class="btn btn-secondary btn-sm" onclick="stopEtfRealtime()">■ RT stop</button>
         </div>
       </div>
     </div>
     <div class="mono text-dim" style="font-size:12px" id="etfProviderNote"></div>
     <div class="mono" style="font-size:11px;margin-top:6px;color:var(--text-dim)" id="etfFetchStatus"></div>
+    <div class="mono" style="font-size:11px;margin-top:4px;color:var(--text-dim)">RT interval (sec): <input type="number" id="etfRtSec" min="5" step="1" value="15" style="width:80px;display:inline-block;padding:2px 6px"> <span id="etfRtStatus">RT: OFF</span></div>
   </div>
 
   <div class="card">
@@ -5690,12 +5693,13 @@ function cdSaveKey() {
 // ═══════════════════════════════════════════════════════
 // ETF TRACKER
 // ═══════════════════════════════════════════════════════
+let etfRealtimeTimer = null;
 function initEtfTracker() {
   const sel = document.getElementById('etfProvider');
   if (!sel) return;
   sel.innerHTML = Object.entries(ETF_PROVIDERS).map(([k,v]) => `<option value="${k}">${v.name}</option>`).join('');
-  const defaultProvider = localStorage.getItem('etf_provider') || 'stooq';
-  sel.value = ETF_PROVIDERS[defaultProvider] ? defaultProvider : 'stooq';
+  const defaultProvider = localStorage.getItem('etf_provider') || 'massive';
+  sel.value = ETF_PROVIDERS[defaultProvider] ? defaultProvider : 'massive';
   onEtfProviderChange();
   renderEtfTables();
   const hasCache = Object.keys(getEtfCache()).length > 0;
@@ -5703,7 +5707,7 @@ function initEtfTracker() {
 }
 
 function onEtfProviderChange() {
-  const provider = document.getElementById('etfProvider')?.value || 'stooq';
+  const provider = document.getElementById('etfProvider')?.value || 'massive';
   localStorage.setItem('etf_provider', provider);
   const cfg = ETF_PROVIDERS[provider];
   document.getElementById('etfProviderNote').textContent = `${cfg.note} ${cfg.needsKey ? 'Provider traži API key.' : 'API key nije potreban.'}`;
@@ -5711,7 +5715,7 @@ function onEtfProviderChange() {
 }
 
 function saveEtfApiKey() {
-  const provider = document.getElementById('etfProvider')?.value || 'stooq';
+  const provider = document.getElementById('etfProvider')?.value || 'massive';
   const cfg = ETF_PROVIDERS[provider];
   const val = document.getElementById('etfApiKey')?.value?.trim();
   if (val) localStorage.setItem(cfg.keyName, val);
@@ -5795,6 +5799,28 @@ function calcEtfPerf(series) {
   };
 }
 
+async function massiveApiRequest(path, params = {}) {
+  const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
+  if (!key) throw new Error('Nedostaje Massive key');
+  const query = new URLSearchParams({ ...params, apiKey: key }).toString();
+  const bases = ['https://api.polygon.io', 'https://api.massive.com'];
+  let lastErr = null;
+  for (const base of bases) {
+    const url = `${base}${path}?${query}`;
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const txt = await res.text();
+      let data = {};
+      try { data = JSON.parse(txt); } catch(e) { data = { raw: txt }; }
+      if (!res.ok) throw new Error(data?.error || data?.message || `${res.status} ${res.statusText}`);
+      return data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Massive endpoint nedostupan');
+}
+
 async function fetchEtfSeriesFromProvider(ticker, provider) {
   if (provider === 'alphavantage') {
     const key = localStorage.getItem(ETF_PROVIDERS.alphavantage.keyName);
@@ -5816,16 +5842,17 @@ async function fetchEtfSeriesFromProvider(ticker, provider) {
   }
 
   if (provider === 'massive') {
-    const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
-    if (!key) throw new Error('Nedostaje Massive key');
     const to = new Date();
     const from = new Date();
     from.setFullYear(to.getFullYear() - 3);
     const f = from.toISOString().slice(0,10);
     const t = to.toISOString().slice(0,10);
-    const url = `https://api.massive.com/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${f}/${t}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`;
-    const data = await (await fetch(url)).json();
-    if (!Array.isArray(data?.results)) throw new Error(data?.error || data?.message || 'Massive error');
+    const data = await massiveApiRequest(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${f}/${t}`, {
+      adjusted: 'true',
+      sort: 'asc',
+      limit: '50000'
+    });
+    if (!Array.isArray(data?.results) || !data.results.length) throw new Error(data?.error || data?.message || 'Massive: nema results');
     return data.results.map(r => ({
       date: new Date(r.t).toISOString().slice(0,10),
       close: parseFloat(r.c)
@@ -5856,7 +5883,7 @@ async function fetchEtfSeriesFromProvider(ticker, provider) {
 
 async function fetchEtfSeries(ticker) {
   const preferred = localStorage.getItem('etf_provider') || 'stooq';
-  const tries = [preferred, 'massive', 'stooq', 'yahoo', 'alphavantage', 'twelvedata'].filter((v, i, a) => a.indexOf(v) === i);
+  const tries = [preferred, 'massive', 'twelvedata', 'alphavantage', 'yahoo', 'stooq'].filter((v, i, a) => a.indexOf(v) === i);
   let lastErr = null;
   for (const p of tries) {
     try {
@@ -5892,6 +5919,61 @@ async function refreshEtfData() {
   const statusEl = document.getElementById('etfFetchStatus');
   if (statusEl) statusEl.textContent = fail ? `Greške (${fail}): ${failed.slice(0,8).join(' | ')}` : 'Dohvat uspješan bez grešaka.';
   showToast(`ETF osvježeno: ${ok} OK, ${fail} grešaka | Stage2: ${s2}, Stage4: ${s4}${fail ? ' (fallback aktivan)' : ''}`, fail > 0);
+}
+
+async function refreshEtfRealtime() {
+  const allTickers = [...new Set([...ETF_COUNTRY_LIST, ...ETF_THEME_LIST].map(x => x.ticker))];
+  const key = localStorage.getItem(ETF_PROVIDERS.massive.keyName);
+  if (!key) {
+    const rtEl = document.getElementById('etfRtStatus');
+    if (rtEl) rtEl.textContent = 'RT: OFF (nema Massive key)';
+    return;
+  }
+  const chunks = [];
+  for (let i = 0; i < allTickers.length; i += 40) chunks.push(allTickers.slice(i, i + 40));
+  const cache = getEtfCache();
+  let updated = 0;
+  for (const part of chunks) {
+    const data = await massiveApiRequest('/v2/snapshot/locale/us/markets/stocks/tickers', { tickers: part.join(',') });
+    const rows = data?.tickers || [];
+    rows.forEach(r => {
+      const t = r.ticker;
+      const price = r?.day?.c;
+      const prev = r?.prevDay?.c;
+      if (!Number.isFinite(price)) return;
+      if (!cache[t]) cache[t] = {};
+      cache[t].price = price;
+      cache[t].d1 = Number.isFinite(prev) && prev ? ((price - prev) / prev) * 100 : cache[t].d1;
+      updated++;
+    });
+  }
+  localStorage.setItem('etf_perf_cache', JSON.stringify({ ts: Date.now(), data: cache }));
+  renderEtfTables();
+  const st = document.getElementById('etfRtStatus');
+  if (st) st.textContent = `RT: ON | zadnje osvježenje ${new Date().toLocaleTimeString('hr-HR')} | ${updated} tickera`;
+}
+
+function stopEtfRealtime() {
+  if (etfRealtimeTimer) clearInterval(etfRealtimeTimer);
+  etfRealtimeTimer = null;
+  const st = document.getElementById('etfRtStatus');
+  if (st) st.textContent = 'RT: OFF';
+}
+
+function startEtfRealtime() {
+  stopEtfRealtime();
+  const sec = Math.max(5, parseInt(document.getElementById('etfRtSec')?.value || '15', 10));
+  document.getElementById('etfRtSec').value = String(sec);
+  refreshEtfRealtime().catch(() => {
+    const st = document.getElementById('etfRtStatus');
+    if (st) st.textContent = 'RT: ERROR (provjeri Massive key/mrežu)';
+  });
+  etfRealtimeTimer = setInterval(() => {
+    refreshEtfRealtime().catch(() => {
+      const st = document.getElementById('etfRtStatus');
+      if (st) st.textContent = 'RT: ERROR (provjeri Massive key/mrežu)';
+    });
+  }, sec * 1000);
 }
 
 function getEtfCache() {
